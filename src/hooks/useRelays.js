@@ -9,14 +9,16 @@ import { useRelayContext } from '../context/RelayContext'
 import { useToast } from '../context/ToastContext'
 import { useRobot } from '../context/RobotContext'
 import { EXPRESSIONS } from '../context/RobotContext'
+import { useLog } from '../context/LogContext'
 import { getRelayStatus, toggleRelay } from '../services/relayService'
-import { POLL_INTERVAL } from '../config'
+import { POLL_INTERVAL, RELAY_CONFIG } from '../config'
 
 export function useRelays() {
   const { state, setRelayLoading, setRelayState, setAllRelays, setGlobalLoading } =
     useRelayContext()
   const { toast } = useToast()
   const { setRobotExpression } = useRobot()
+  const { addLog } = useLog()
   const pollRef = useRef(null)
 
   /** Fetch all relay states from backend and sync to context */
@@ -28,10 +30,11 @@ export function useRelays() {
     } catch (err) {
       toast(err.message || 'Failed to fetch relay status', 'error')
       setRobotExpression(EXPRESSIONS.ERROR, 'Cannot reach device', 3000)
+      addLog('error', 'relay', `Status fetch failed: ${err.message ?? 'network error'}`)
     } finally {
       setGlobalLoading(false)
     }
-  }, [setAllRelays, setGlobalLoading, toast, setRobotExpression])
+  }, [setAllRelays, setGlobalLoading, toast, setRobotExpression, addLog])
 
   /**
    * Toggle a relay.
@@ -54,15 +57,18 @@ export function useRelays() {
           result.isOn ? 'Relay ON!' : 'Relay OFF',
           2500
         )
+        const relayName = RELAY_CONFIG.find((r) => r.id === id)?.name ?? `Relay ${id}`
         toast(`Relay ${id} turned ${result.isOn ? 'ON' : 'OFF'}`, 'success')
+        addLog('info', 'relay', `${relayName} → ${result.isOn ? 'ON' : 'OFF'} (manual)`, { relay_id: id, isOn: result.isOn, source: 'manual' })
       } catch (err) {
         // Revert optimistic update on failure
         setRelayState(id, currentIsOn)
         toast(err.message || 'Toggle failed', 'error')
         setRobotExpression(EXPRESSIONS.ERROR, 'Command failed!', 3000)
+        addLog('error', 'relay', `Toggle failed for relay ${id}: ${err.message ?? 'unknown'}`, { relay_id: id })
       }
     },
-    [setRelayLoading, setRelayState, toast, setRobotExpression]
+    [setRelayLoading, setRelayState, toast, setRobotExpression, addLog]
   )
 
   // Initial fetch on mount

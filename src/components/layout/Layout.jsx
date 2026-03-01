@@ -13,6 +13,7 @@ import RobotFace, { RobotSVG, useBlinking } from '../robot/RobotFace'
 import { useRobot, EXPRESSIONS } from '../../context/RobotContext'
 import ToastContainer from '../ToastContainer'
 import VoiceMicButton from '../VoiceMicButton'
+import { useWebSocket } from '../../hooks/useWebSocket'
 
 const IDLE_TIMEOUT = 45_000 // 45 s of inactivity → return to idle
 
@@ -73,6 +74,9 @@ function IdleOverlay({ onWake }) {
 
 // ─── Layout ────────────────────────────────────────────────────────────────
 export default function Layout({ children }) {
+  // Start WebSocket + device polling once here — single mount point
+  useWebSocket()
+
   const [idleMode, setIdleMode] = useState(true)
   const timerRef = useRef(null)
 

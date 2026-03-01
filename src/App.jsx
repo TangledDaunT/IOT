@@ -10,6 +10,9 @@ import { RelayProvider }  from './context/RelayContext'
 import { ToastProvider }  from './context/ToastContext'
 import { RobotProvider }  from './context/RobotContext'
 import { VoiceProvider }  from './context/VoiceContext'
+import { LogProvider }    from './context/LogContext'
+import { DeviceProvider } from './context/DeviceContext'
+import { SceneProvider }  from './context/SceneContext'
 import { EXPRESSIONS }    from './context/RobotContext'
 
 import Layout      from './components/layout/Layout'
@@ -18,6 +21,9 @@ import Dashboard   from './pages/Dashboard'
 
 const Timer    = lazy(() => import('./pages/Timer'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Devices  = lazy(() => import('./pages/Devices'))
+const Logs     = lazy(() => import('./pages/Logs'))
+const Scenes   = lazy(() => import('./pages/Scenes'))
 
 function PageLoader() {
   return (
@@ -36,23 +42,33 @@ const PAGES = [
     expr: EXPRESSIONS.IDLE,
   },
   {
+    key: 'devices',
+    label: 'Devices',
+    component: () => <Suspense fallback={<PageLoader />}><Devices /></Suspense>,
+    expr: EXPRESSIONS.THINKING,
+  },
+  {
+    key: 'logs',
+    label: 'Logs',
+    component: () => <Suspense fallback={<PageLoader />}><Logs /></Suspense>,
+    expr: EXPRESSIONS.IDLE,
+  },
+  {
+    key: 'scenes',
+    label: 'Scenes',
+    component: () => <Suspense fallback={<PageLoader />}><Scenes /></Suspense>,
+    expr: EXPRESSIONS.HAPPY,
+  },
+  {
     key: 'timer',
     label: 'Timer',
-    component: () => (
-      <Suspense fallback={<PageLoader />}>
-        <Timer />
-      </Suspense>
-    ),
+    component: () => <Suspense fallback={<PageLoader />}><Timer /></Suspense>,
     expr: EXPRESSIONS.THINKING,
   },
   {
     key: 'settings',
     label: 'Settings',
-    component: () => (
-      <Suspense fallback={<PageLoader />}>
-        <Settings />
-      </Suspense>
-    ),
+    component: () => <Suspense fallback={<PageLoader />}><Settings /></Suspense>,
     expr: EXPRESSIONS.HAPPY,
   },
 ]
@@ -61,13 +77,19 @@ export default function App() {
   return (
     <RobotProvider>
       <ToastProvider>
-        <RelayProvider>
-          <VoiceProvider>
-            <Layout>
-              <PageSwiper pages={PAGES} />
-            </Layout>
-          </VoiceProvider>
-        </RelayProvider>
+        <LogProvider>
+          <RelayProvider>
+            <DeviceProvider>
+              <SceneProvider>
+                <VoiceProvider>
+                  <Layout>
+                    <PageSwiper pages={PAGES} />
+                  </Layout>
+                </VoiceProvider>
+              </SceneProvider>
+            </DeviceProvider>
+          </RelayProvider>
+        </LogProvider>
       </ToastProvider>
     </RobotProvider>
   )
