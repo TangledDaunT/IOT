@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="40" fill="#0f172a"/>
+  <!-- Outer ring -->
+  <rect width="192" height="192" rx="40" fill="none" stroke="#38bdf8" stroke-width="6"/>
+
+  <!-- Robot head body -->
+  <rect x="44" y="68" width="104" height="88" rx="22" fill="#1e293b" stroke="#38bdf8" stroke-width="3"/>
+
+  <!-- Antenna -->
+  <line x1="96" y1="68" x2="96" y2="50" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="96" cy="44" r="8" fill="#38bdf8"/>
+  <circle cx="96" cy="44" r="4" fill="#0f172a"/>
+
+  <!-- Ears -->
+  <circle cx="44" cy="105" r="9" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+  <circle cx="148" cy="105" r="9" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+
+  <!-- Left eye -->
+  <circle cx="76" cy="104" r="15" fill="white"/>
+  <circle cx="76" cy="104" r="9" fill="#38bdf8"/>
+  <circle cx="76" cy="104" r="5" fill="#0f172a"/>
+  <circle cx="71" cy="99" r="3" fill="white"/>
+
+  <!-- Right eye -->
+  <circle cx="116" cy="104" r="15" fill="white"/>
+  <circle cx="116" cy="104" r="9" fill="#38bdf8"/>
+  <circle cx="116" cy="104" r="5" fill="#0f172a"/>
+  <circle cx="111" cy="99" r="3" fill="white"/>
+
+  <!-- Cheeks -->
+  <ellipse cx="60" cy="126" rx="12" ry="8" fill="#f472b6" opacity="0.5"/>
+  <ellipse cx="132" cy="126" rx="12" ry="8" fill="#f472b6" opacity="0.5"/>
+
+  <!-- Nose -->
+  <circle cx="96" cy="120" r="4" fill="#38bdf8" opacity="0.8"/>
+
+  <!-- Mouth smile -->
+  <path d="M 78 136 Q 96 148 114 136" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Chin panel -->
+  <rect x="80" y="146" width="32" height="6" rx="3" fill="#38bdf8" opacity="0.4"/>
+</svg>
