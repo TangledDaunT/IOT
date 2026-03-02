@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 // - Manual chunk splitting to reduce initial bundle size
 // - PWA via workbox for offline support
 export default defineConfig({
+  base: '/IOT/',
   plugins: [
     react(),
     VitePWA({
@@ -19,8 +20,8 @@ export default defineConfig({
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'landscape',
-        start_url: '/',
-        scope: '/',
+        start_url: '/IOT/',
+        scope: '/IOT/',
         icons: [
           {
             src: 'icons/icon-192.svg',
