@@ -34,8 +34,8 @@ function StepRow({ step, index, onChange, onDelete }) {
         value={step.relay_id}
         onChange={(e) => onChange({ ...step, relay_id: Number(e.target.value) })}
         style={{
-          flex: 1, fontSize: '10px', background: '#1e293b', color: '#cbd5e1',
-          border: '1px solid #334155', borderRadius: '6px',
+          flex: 1, fontSize: '10px', background: '#111111', color: '#cccccc',
+          border: '1px solid #333333', borderRadius: '6px',
           padding: '3px 4px', minWidth: 0,
         }}
       >
@@ -90,8 +90,8 @@ function StepRow({ step, index, onChange, onDelete }) {
 function SceneCard({ scene, isRunning, runningLabel, onRun, onEdit, onDelete }) {
   return (
     <div style={{
-      background: '#0f172a',
-      border: `1.5px solid ${isRunning ? '#2563eb' : '#1e293b'}`,
+      background: '#0a0a0a',
+      border: `1.5px solid ${isRunning ? '#ffffff' : '#1a1a1a'}`,
       borderRadius: '12px', padding: '10px 12px',
       display: 'flex', flexDirection: 'column', gap: '6px',
     }}>
@@ -112,8 +112,8 @@ function SceneCard({ scene, isRunning, runningLabel, onRun, onEdit, onDelete }) 
           return (
             <span key={i} style={{
               fontSize: '8px', fontFamily: 'monospace',
-              background: s.state === 'on' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.1)',
-              color: s.state === 'on' ? '#22c55e' : '#ef4444',
+              background: s.state === 'on' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+              color: s.state === 'on' ? '#cccccc' : '#555555',
               borderRadius: '4px', padding: '1px 5px',
             }}>
               {cfg?.icon ?? '?'}{s.state === 'on' ? '↑' : '↓'}
@@ -134,9 +134,9 @@ function SceneCard({ scene, isRunning, runningLabel, onRun, onEdit, onDelete }) 
           disabled={isRunning}
           style={{
             flex: 1, height: '26px', borderRadius: '7px',
-            background: isRunning ? '#1e293b' : 'rgba(37,99,235,0.2)',
-            border: '1px solid ' + (isRunning ? '#1e293b' : '#2563eb'),
-            color: isRunning ? '#334155' : '#60a5fa',
+            background: isRunning ? '#1a1a1a' : 'rgba(255,255,255,0.07)',
+            border: '1px solid ' + (isRunning ? '#1a1a1a' : '#ffffff'),
+            color: isRunning ? '#333333' : '#ffffff',
             fontSize: '9px', fontFamily: 'monospace', cursor: isRunning ? 'not-allowed' : 'pointer',
           }}
         >
@@ -203,8 +203,8 @@ function SceneEditor({ initial, onSave, onCancel }) {
           onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           style={{
             flex: 1, fontSize: '12px', fontWeight: 600,
-            background: '#1e293b', color: '#f8fafc',
-            border: '1px solid #334155', borderRadius: '8px',
+          background: '#111111', color: '#ffffff',
+          border: '1px solid #333333', borderRadius: '8px',
             padding: '5px 10px', outline: 'none',
           }}
         />
@@ -244,9 +244,9 @@ function SceneEditor({ initial, onSave, onCancel }) {
           disabled={!valid}
           style={{
             flex: 1, height: '30px', borderRadius: '8px',
-            background: valid ? 'rgba(37,99,235,0.3)' : '#1e293b',
-            border: '1px solid ' + (valid ? '#2563eb' : '#1e293b'),
-            color: valid ? '#60a5fa' : '#334155',
+          background: valid ? 'rgba(255,255,255,0.1)' : '#111111',
+          border: '1px solid ' + (valid ? '#ffffff' : '#1a1a1a'),
+          color: valid ? '#ffffff' : '#333333',
             fontSize: '10px', fontFamily: 'monospace',
             cursor: valid ? 'pointer' : 'not-allowed',
           }}
@@ -357,8 +357,8 @@ export default function Scenes() {
         {/* Right — editor */}
         <div style={{
           width: '44%', flexShrink: 0,
-          background: '#050d1a', borderRadius: '14px',
-          border: '1px solid #1e293b', padding: '12px',
+          background: '#000000', borderRadius: '14px',
+          border: '1px solid #1a1a1a', padding: '12px',
         }}>
           {editing ? (
             <SceneEditor
@@ -372,7 +372,7 @@ export default function Scenes() {
               alignItems: 'center', justifyContent: 'center', gap: '8px',
             }}>
               <span style={{ fontSize: '28px' }}>⚡</span>
-              <p style={{ fontSize: '11px', color: '#334155', fontFamily: 'monospace', textAlign: 'center' }}>
+              <p style={{ fontSize: '11px', color: '#333333', fontFamily: 'monospace', textAlign: 'center' }}>
                 Select a scene to edit<br />or create a new one
               </p>
             </div>

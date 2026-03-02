@@ -48,6 +48,11 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    host: true,   // bind to 0.0.0.0 so the phone can reach the Mac
+    port: 5173,
+    strictPort: false,
+  },
   build: {
     // Chunk splitting: router + react core isolated from app logic
     rollupOptions: {

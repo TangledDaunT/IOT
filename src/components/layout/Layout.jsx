@@ -35,7 +35,7 @@ function IdleOverlay({ onWake }) {
       onClick={handleTap}
       style={{
         position: 'fixed', inset: 0, zIndex: 9998,
-        background: 'linear-gradient(160deg, #020810 0%, #050d1a 100%)',
+        background: '#000000',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer', userSelect: 'none',
@@ -57,7 +57,7 @@ function IdleOverlay({ onWake }) {
 
         {!exiting && (
           <p style={{
-            color: '#2d4a6b',
+            color: '#333333',
             fontSize: '12px',
             letterSpacing: '0.18em',
             fontFamily: 'monospace',

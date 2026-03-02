@@ -48,13 +48,13 @@ export function useBlinking(expression) {
 
 // ─── Expression configs ────────────────────────────────────────────────────
 const EXPRESSION_CONFIG = {
-  [EXPRESSIONS.IDLE]:     { headColor: '#0d1b2e', borderColor: '#1a4570', eyeColor: '#38bdf8', glowColor: '#38bdf820', cheekColor: null,        antennaColor: '#38bdf8' },
-  [EXPRESSIONS.HAPPY]:    { headColor: '#0a1e14', borderColor: '#22c55e', eyeColor: '#34d399', glowColor: '#22c55e30', cheekColor: '#f472b640',  antennaColor: '#22c55e' },
-  [EXPRESSIONS.THINKING]: { headColor: '#0e0e2a', borderColor: '#818cf8', eyeColor: '#818cf8', glowColor: '#818cf820', cheekColor: null,        antennaColor: '#818cf8' },
-  [EXPRESSIONS.LOADING]:  { headColor: '#0a1525', borderColor: '#60a5fa', eyeColor: '#60a5fa', glowColor: '#60a5fa25', cheekColor: null,        antennaColor: '#60a5fa' },
-  [EXPRESSIONS.SUCCESS]:  { headColor: '#0a1e10', borderColor: '#22c55e', eyeColor: '#fbbf24', glowColor: '#22c55e40', cheekColor: '#fbbf2440', antennaColor: '#fbbf24' },
-  [EXPRESSIONS.ERROR]:    { headColor: '#200a0a', borderColor: '#ef4444', eyeColor: '#ef4444', glowColor: '#ef444430', cheekColor: null,        antennaColor: '#ef4444' },
-  [EXPRESSIONS.SLEEPING]: { headColor: '#0a0a14', borderColor: '#1e293b', eyeColor: '#1e3a5f', glowColor: null,        cheekColor: null,        antennaColor: '#1e293b' },
+  [EXPRESSIONS.IDLE]:     { headColor: '#0a0a0a', borderColor: '#333333', eyeColor: '#ffffff', glowColor: 'rgba(255,255,255,0.08)', cheekColor: null,                   antennaColor: '#ffffff' },
+  [EXPRESSIONS.HAPPY]:    { headColor: '#0a0a0a', borderColor: '#ffffff', eyeColor: '#ffffff', glowColor: 'rgba(255,255,255,0.15)', cheekColor: 'rgba(255,255,255,0.1)', antennaColor: '#ffffff' },
+  [EXPRESSIONS.THINKING]: { headColor: '#0a0a0a', borderColor: '#888888', eyeColor: '#cccccc', glowColor: 'rgba(255,255,255,0.06)', cheekColor: null,                   antennaColor: '#888888' },
+  [EXPRESSIONS.LOADING]:  { headColor: '#000000', borderColor: '#aaaaaa', eyeColor: '#aaaaaa', glowColor: 'rgba(255,255,255,0.08)', cheekColor: null,                   antennaColor: '#aaaaaa' },
+  [EXPRESSIONS.SUCCESS]:  { headColor: '#0a0a0a', borderColor: '#ffffff', eyeColor: '#ffffff', glowColor: 'rgba(255,255,255,0.2)',  cheekColor: 'rgba(255,255,255,0.1)', antennaColor: '#ffffff' },
+  [EXPRESSIONS.ERROR]:    { headColor: '#0a0a0a', borderColor: '#666666', eyeColor: '#888888', glowColor: 'rgba(255,255,255,0.04)', cheekColor: null,                   antennaColor: '#666666' },
+  [EXPRESSIONS.SLEEPING]: { headColor: '#000000', borderColor: '#222222', eyeColor: '#2a2a2a', glowColor: null,                     cheekColor: null,                   antennaColor: '#222222' },
 }
 
 // ─── Eye geometry (viewBox 0 0 100 112) ────────────────────────────────────
@@ -64,7 +64,7 @@ const EW = 28
 const EH = 14
 
 function PillSocket({ cx, cy }) {
-  return <rect x={cx - EW / 2} y={cy - EH / 2} width={EW} height={EH} rx={EH / 2} fill="#060c16" />
+  return <rect x={cx - EW / 2} y={cy - EH / 2} width={EW} height={EH} rx={EH / 2} fill="#000000" />
 }
 
 // Normal glowing pill
@@ -98,7 +98,7 @@ function EyeSleeping({ cx, cy }) {
   return (
     <g>
       <PillSocket cx={cx} cy={cy} />
-      <line x1={cx - 9} y1={cy} x2={cx + 9} y2={cy} stroke="#334155" strokeWidth={2.5} strokeLinecap="round" />
+      <line x1={cx - 9} y1={cy} x2={cx + 9} y2={cy} stroke="#333333" strokeWidth={2.5} strokeLinecap="round" />
     </g>
   )
 }
@@ -135,8 +135,8 @@ function EyeError({ cx, cy }) {
   return (
     <g>
       <PillSocket cx={cx} cy={cy} />
-      <line x1={cx - 5} y1={cy - 4} x2={cx + 5} y2={cy + 4} stroke="#ef4444" strokeWidth={2.5} strokeLinecap="round" />
-      <line x1={cx + 5} y1={cy - 4} x2={cx - 5} y2={cy + 4} stroke="#ef4444" strokeWidth={2.5} strokeLinecap="round" />
+      <line x1={cx - 5} y1={cy - 4} x2={cx + 5} y2={cy + 4} stroke="#888888" strokeWidth={2.5} strokeLinecap="round" />
+      <line x1={cx + 5} y1={cy - 4} x2={cx - 5} y2={cy + 4} stroke="#888888" strokeWidth={2.5} strokeLinecap="round" />
     </g>
   )
 }
@@ -153,19 +153,19 @@ function EyeThinkingSquint({ cx, cy, color }) {
 
 // ─── Mouth renderers ────────────────────────────────────────────────────────
 function MouthNeutral() {
-  return <path d="M 36 72 Q 50 78 64 72" fill="none" stroke="#334155" strokeWidth={2.5} strokeLinecap="round" />
+  return <path d="M 36 72 Q 50 78 64 72" fill="none" stroke="#333333" strokeWidth={2.5} strokeLinecap="round" />
 }
 function MouthHappy() {
   return (
     <g>
-      <path d="M 30 68 Q 50 84 70 68" fill="#ef4444" opacity={0.7} />
+      <path d="M 30 68 Q 50 84 70 68" fill="#ffffff" opacity={0.15} />
       <path d="M 30 68 Q 50 84 70 68" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" />
       <rect x={35} y={68} width={30} height={6} fill="white" rx={2} opacity={0.9} />
     </g>
   )
 }
 function MouthThinking() {
-  return <path d="M 36 72 Q 46 66 64 70" fill="none" stroke="#334155" strokeWidth={2.5} strokeLinecap="round" />
+  return <path d="M 36 72 Q 46 66 64 70" fill="none" stroke="#333333" strokeWidth={2.5} strokeLinecap="round" />
 }
 function MouthLoading() {
   return <circle cx={50} cy={72} r={7} fill="none" stroke="#334155" strokeWidth={2} strokeDasharray="14 10"

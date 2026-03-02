@@ -14,19 +14,19 @@ import { useLogContext } from '../context/LogContext'
 
 // ── Colour maps ───────────────────────────────────────────────────────────
 const LEVEL_COLOR = {
-  info:  '#22c55e',
-  warn:  '#f59e0b',
-  error: '#ef4444',
+  info:  '#ffffff',
+  warn:  '#888888',
+  error: '#555555',
 }
 
 const SOURCE_COLOR = {
-  relay:  { bg: 'rgba(56,189,248,0.15)', text: '#38bdf8' },
-  voice:  { bg: 'rgba(168,85,247,0.15)', text: '#a855f7' },
-  timer:  { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
-  scene:  { bg: 'rgba(34,197,94,0.15)',  text: '#22c55e' },
-  device: { bg: 'rgba(251,191,36,0.15)', text: '#fbbf24' },
-  ws:     { bg: 'rgba(99,102,241,0.15)', text: '#818cf8' },
-  system: { bg: 'rgba(100,116,139,0.15)', text: '#94a3b8' },
+  relay:  { bg: 'rgba(255,255,255,0.06)', text: '#cccccc' },
+  voice:  { bg: 'rgba(255,255,255,0.05)', text: '#aaaaaa' },
+  timer:  { bg: 'rgba(255,255,255,0.05)', text: '#aaaaaa' },
+  scene:  { bg: 'rgba(255,255,255,0.06)', text: '#cccccc' },
+  device: { bg: 'rgba(255,255,255,0.05)', text: '#999999' },
+  ws:     { bg: 'rgba(255,255,255,0.04)', text: '#888888' },
+  system: { bg: 'rgba(255,255,255,0.04)', text: '#777777' },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ function LogRow({ entry }) {
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: '8px',
       padding: '5px 10px',
-      borderBottom: '1px solid #0f172a',
+      borderBottom: '1px solid #111111',
     }}>
       {/* Level dot */}
       <span style={{
@@ -62,9 +62,9 @@ function LogRow({ entry }) {
       }} />
 
       {/* Time */}
-      <span style={{ fontSize: '9px', color: '#475569', fontFamily: 'monospace', flexShrink: 0, minWidth: '52px', paddingTop: '1px' }}>
+      <span style={{ fontSize: '9px', color: '#555555', fontFamily: 'monospace', flexShrink: 0, minWidth: '52px', paddingTop: '1px' }}>
         {fmtTime(entry.ts)}<br />
-        <span style={{ color: '#334155' }}>{fmtRelative(entry.ts)}</span>
+        <span style={{ color: '#333333' }}>{fmtRelative(entry.ts)}</span>
       </span>
 
       {/* Source badge */}
@@ -123,8 +123,8 @@ export default function Logs() {
           <button
             onClick={clearLogs}
             style={{
-              fontSize: '9px', color: '#ef4444', background: 'rgba(239,68,68,0.1)',
-              border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px',
+              fontSize: '9px', color: '#888888', background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px',
               padding: '2px 8px', cursor: 'pointer', fontFamily: 'monospace',
             }}
           >
@@ -162,10 +162,10 @@ export default function Logs() {
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto"
-        style={{ background: '#050d1a' }}
+        style={{ background: '#000000' }}
       >
         {entries.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#334155', fontSize: '11px', fontFamily: 'monospace', marginTop: '40px' }}>
+          <div style={{ textAlign: 'center', color: '#333333', fontSize: '11px', fontFamily: 'monospace', marginTop: '40px' }}>
             No log entries
           </div>
         ) : (

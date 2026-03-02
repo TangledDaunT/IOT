@@ -8,18 +8,18 @@ export default {
       // Custom color palette for industrial/control-panel feel
       colors: {
         surface: {
-          900: '#0f172a',
-          800: '#1e293b',
-          700: '#293548',
-          600: '#334155',
+          900: '#000000',
+          800: '#111111',
+          700: '#1a1a1a',
+          600: '#2a2a2a',
         },
         relay: {
-          on: '#22c55e',   // green — energized
-          off: '#475569',  // slate — de-energized
-          warn: '#f59e0b', // amber — pending
-          err: '#ef4444',  // red — fault
+          on:   '#ffffff',  // white — energized
+          off:  '#444444',  // dark grey — de-energized
+          warn: '#999999',  // grey — pending
+          err:  '#888888',  // grey — fault
         },
-        accent: '#38bdf8', // sky blue — primary interactive
+        accent: '#ffffff', // white — primary interactive
       },
       // Large touch targets on mobile (minimum 44px — Apple HIG)
       minHeight: {

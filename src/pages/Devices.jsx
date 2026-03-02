@@ -45,7 +45,7 @@ function rssiToBars(rssi) {
 
 function RssiBars({ rssi }) {
   const bars  = rssiToBars(rssi)
-  const color = bars >= 3 ? '#22c55e' : bars === 2 ? '#f59e0b' : '#ef4444'
+  const color = bars >= 3 ? '#ffffff' : bars === 2 ? '#aaaaaa' : '#555555'
   const heights = [4, 7, 10, 14]
   return (
     <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: '2px', height: '14px' }}>
@@ -54,11 +54,11 @@ function RssiBars({ rssi }) {
           display: 'block',
           width: '3px', height: `${h}px`,
           borderRadius: '1px',
-          background: i < bars ? color : '#334155',
+          background: i < bars ? color : '#222222',
         }} />
       ))}
       {rssi != null && (
-        <span style={{ fontSize: '8px', color: '#64748b', fontFamily: 'monospace', marginLeft: '3px', alignSelf: 'center' }}>
+            <span style={{ fontSize: '8px', color: '#555555', fontFamily: 'monospace', marginLeft: '3px', alignSelf: 'center' }}>
           {rssi}dBm
         </span>
       )}
@@ -92,12 +92,12 @@ function DeviceCard({ device }) {
     }
   }, [device, toast, addLog])
 
-  const onlineBg    = device.online ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.08)'
-  const borderColor = device.online ? '#166534' : '#450a0a'
+  const onlineBg    = device.online ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)'
+  const borderColor = device.online ? '#333333' : '#1a1a1a'
 
   return (
     <div style={{
-      background: '#0f172a',
+      background: '#0a0a0a',
       border: `1.5px solid ${borderColor}`,
       borderRadius: '14px',
       padding: '12px 14px',
@@ -111,16 +111,16 @@ function DeviceCard({ device }) {
         <span style={{
           fontSize: '8px', fontFamily: 'monospace', letterSpacing: '0.1em',
           textTransform: 'uppercase', fontWeight: 700,
-          color: device.online ? '#22c55e' : '#ef4444',
+          color: device.online ? '#ffffff' : '#555555',
           background: onlineBg, borderRadius: '4px',
           padding: '1px 5px', flexShrink: 0,
         }}>
           {device.online ? '● ONLINE' : '○ OFFLINE'}
         </span>
-        <span style={{ color: '#f8fafc', fontSize: '12px', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ color: '#ffffff', fontSize: '12px', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {device.name}
         </span>
-        <span style={{ fontSize: '9px', color: '#475569', fontFamily: 'monospace', flexShrink: 0 }}>
+        <span style={{ fontSize: '9px', color: '#555555', fontFamily: 'monospace', flexShrink: 0 }}>
           {device.room}
         </span>
       </div>
@@ -143,9 +143,9 @@ function DeviceCard({ device }) {
           marginTop: '2px',
           height: '28px',
           borderRadius: '8px',
-          border: '1px solid #1e3a5f',
-          background: otaBusy ? '#1e293b' : 'transparent',
-          color: device.online && !otaBusy ? '#38bdf8' : '#334155',
+          border: '1px solid #222222',
+          background: otaBusy ? '#1a1a1a' : 'transparent',
+          color: device.online && !otaBusy ? '#ffffff' : '#333333',
           fontSize: '10px',
           fontFamily: 'monospace',
           letterSpacing: '0.1em',
@@ -162,8 +162,8 @@ function DeviceCard({ device }) {
 function StatRow({ label, value, mono }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-      <span style={{ fontSize: '8px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
-      <span style={{ fontSize: '10px', color: '#cbd5e1', fontFamily: mono ? 'monospace' : 'inherit' }}>{value}</span>
+      <span style={{ fontSize: '8px', color: '#555555', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
+      <span style={{ fontSize: '10px', color: '#cccccc', fontFamily: mono ? 'monospace' : 'inherit' }}>{value}</span>
     </div>
   )
 }
@@ -191,7 +191,7 @@ export default function Devices() {
           {/* WS indicator */}
           <span style={{
             fontSize: '8px', fontFamily: 'monospace', letterSpacing: '0.1em',
-            color: state.wsConnected ? '#22c55e' : '#ef4444',
+            color: state.wsConnected ? '#ffffff' : '#555555',
           }}>
             {state.wsConnected ? '⬤ WS' : '○ WS'}
           </span>
