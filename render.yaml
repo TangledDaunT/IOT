@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: smart-home-control
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: false
+
+    # Environment variables — set these in Render Dashboard → Environment
+    # NEVER put actual values here (this file is committed to git)
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false          # Set in Render Dashboard to your public IP/domain
+      - key: VITE_MOCK_MODE
+        value: "false"
+      - key: VITE_GROQ_API_KEY
+        sync: false          # Set in Render Dashboard
+      - key: VITE_PORCUPINE_ACCESS_KEY
+        sync: false          # Set in Render Dashboard
+      - key: VITE_APP_PASSWORD
+        sync: false          # Set in Render Dashboard — your chosen password
+
+    # Required HTTP headers:
+    # COOP enables SharedArrayBuffer (better Porcupine performance)
+    headers:
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: same-origin

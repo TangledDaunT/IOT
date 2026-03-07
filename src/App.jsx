@@ -19,6 +19,7 @@ import Layout      from './components/layout/Layout'
 import PageSwiper  from './components/PageSwiper'
 import Dashboard   from './pages/Dashboard'
 import ErrorBoundary from './components/ErrorBoundary'
+import AuthGate    from './components/AuthGate'
 
 const Timer    = lazy(() => import('./pages/Timer'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -76,24 +77,26 @@ const PAGES = [
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <RobotProvider>
-        <ToastProvider>
-          <LogProvider>
-            <RelayProvider>
-              <DeviceProvider>
-                <SceneProvider>
-                  <VoiceProvider>
-                    <Layout>
-                      <PageSwiper pages={PAGES} />
-                    </Layout>
-                  </VoiceProvider>
-                </SceneProvider>
-              </DeviceProvider>
-            </RelayProvider>
-          </LogProvider>
-        </ToastProvider>
-      </RobotProvider>
-    </ErrorBoundary>
+    <AuthGate>
+      <ErrorBoundary>
+        <RobotProvider>
+          <ToastProvider>
+            <LogProvider>
+              <RelayProvider>
+                <DeviceProvider>
+                  <SceneProvider>
+                    <VoiceProvider>
+                      <Layout>
+                        <PageSwiper pages={PAGES} />
+                      </Layout>
+                    </VoiceProvider>
+                  </SceneProvider>
+                </DeviceProvider>
+              </RelayProvider>
+            </LogProvider>
+          </ToastProvider>
+        </RobotProvider>
+      </ErrorBoundary>
+    </AuthGate>
   )
 }

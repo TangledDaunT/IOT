@@ -135,8 +135,13 @@ export default function Settings() {
         {/* Voice settings */}
         <Card className="p-3 shrink-0">
           <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-2">Voice</p>
-          <VoiceToggle label="Enable"  value={voiceSettings.enabled}    onChange={v => setVoiceSettings({ enabled: v })} />
-          <VoiceToggle label="TTS"      value={voiceSettings.ttsEnabled} onChange={v => setVoiceSettings({ ttsEnabled: v })} />
+          <VoiceToggle label="Enable"     value={voiceSettings.enabled}    onChange={v => setVoiceSettings({ enabled: v })} />
+          <VoiceToggle label="TTS"        value={voiceSettings.ttsEnabled} onChange={v => setVoiceSettings({ ttsEnabled: v })} />
+          <VoiceToggle
+            label="Wake Word"
+            value={voiceSettings.wakeWordEnabled ?? true}
+            onChange={v => setVoiceSettings({ wakeWordEnabled: v })}
+          />
           {MOCK_MODE && (
             <VoiceToggle label="Mock STT" value={voiceSettings.mockStt}   onChange={v => setVoiceSettings({ mockStt: v })} />
           )}

@@ -72,8 +72,8 @@ export default defineConfig({
         },
       },
     },
-    // Lower target for Android WebView compatibility
-    target: 'es2015',
+    // es2020: supports BigInt (required by Porcupine WASM), still supported by Galaxy J6 (Chrome 103+)
+    target: 'es2020',
     // Reduce chunk size warnings threshold
     chunkSizeWarningLimit: 400,
   },

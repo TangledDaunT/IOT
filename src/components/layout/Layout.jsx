@@ -9,12 +9,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import RobotFace, { RobotSVG, useBlinking } from '../robot/RobotFace'
 import { useRobot } from '../../context/RobotContext'
 import { useRelayContext } from '../../context/RelayContext'
+import { useVoice } from '../../context/VoiceContext'
 import ToastContainer from '../ToastContainer'
 import VoiceMicButton from '../VoiceMicButton'
 import GlobalShortcuts from '../GlobalShortcuts'
 import AiPanel from '../AiPanel'
+import WakeWordIndicator from '../WakeWordIndicator'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useRelayAlerts } from '../../hooks/useRelayAlerts'
+import { usePorcupineWakeWord } from '../../hooks/usePorcupineWakeWord'
 import { RELAY_CONFIG } from '../../config'
 
 // ── Live clock hook ───────────────────────────────────────────────────────
@@ -151,13 +154,19 @@ function IdleOverlay({ onWake }) {
 export default function Layout({ children }) {
   useWebSocket()
   useRelayAlerts()
-
+  // Wake word \u2014 active only when voice+wake-word enabled and app is awake
+  const { settings: voiceSettings } = useVoice()
+  const [awake, setAwake] = useState(false)
+  const { wakeState, wakeError } = usePorcupineWakeWord({
+    enabled: voiceSettings.enabled && voiceSettings.wakeWordEnabled && awake,
+  })
   const [idleMode, setIdleMode] = useState(true)
   const [chatOpen, setChatOpen] = useState(false)
   const timerRef = useRef(null)
 
   const goIdle = useCallback(() => {
     setIdleMode(true)
+    setAwake(false)
     setChatOpen(false)
   }, [])
 
@@ -168,6 +177,7 @@ export default function Layout({ children }) {
 
   const wakeUp = useCallback(() => {
     setIdleMode(false)
+    setAwake(true)
     resetIdleTimer()
   }, [resetIdleTimer])
 
@@ -195,6 +205,7 @@ export default function Layout({ children }) {
       {!idleMode && <VoiceMicButton />}
       {!idleMode && <GlobalShortcuts onOpenChat={() => setChatOpen(true)} />}
       {!idleMode && <AiPanel open={chatOpen} onClose={() => setChatOpen(false)} />}
+      {!idleMode && <WakeWordIndicator wakeState={wakeState} wakeError={wakeError} />}
 
       {/* Idle overlay */}
       {idleMode && <IdleOverlay onWake={wakeUp} />}

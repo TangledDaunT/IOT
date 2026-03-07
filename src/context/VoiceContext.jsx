@@ -25,17 +25,19 @@ export const VOICE_STATES = {
 
 // ─── localStorage keys ────────────────────────────────────────────────────
 const LS = {
-  ENABLED: 'iot_voice_enabled',
-  TTS:     'iot_voice_tts',
-  MOCK:    'iot_voice_mock_stt',
-  HIST:    'iot_voice_history',
+  ENABLED:   'iot_voice_enabled',
+  TTS:       'iot_voice_tts',
+  MOCK:      'iot_voice_mock_stt',
+  HIST:      'iot_voice_history',
+  WAKE_WORD: 'iot_wake_word_enabled',
 }
 
 function readSettings() {
   return {
-    enabled:    localStorage.getItem(LS.ENABLED) !== 'false',
-    ttsEnabled: localStorage.getItem(LS.TTS)     !== 'false',
-    mockStt:    localStorage.getItem(LS.MOCK)    === 'true',
+    enabled:         localStorage.getItem(LS.ENABLED)   !== 'false',
+    ttsEnabled:      localStorage.getItem(LS.TTS)        !== 'false',
+    mockStt:         localStorage.getItem(LS.MOCK)       === 'true',
+    wakeWordEnabled: localStorage.getItem(LS.WAKE_WORD)  !== 'false',
   }
 }
 
@@ -77,9 +79,10 @@ function reducer(state, action) {
     }
     case 'SET_SETTINGS': {
       const settings = { ...state.settings, ...action.partial }
-      if ('enabled'    in action.partial) localStorage.setItem(LS.ENABLED, String(action.partial.enabled))
-      if ('ttsEnabled' in action.partial) localStorage.setItem(LS.TTS,     String(action.partial.ttsEnabled))
-      if ('mockStt'    in action.partial) localStorage.setItem(LS.MOCK,    String(action.partial.mockStt))
+      if ('enabled'         in action.partial) localStorage.setItem(LS.ENABLED,   String(action.partial.enabled))
+      if ('ttsEnabled'      in action.partial) localStorage.setItem(LS.TTS,        String(action.partial.ttsEnabled))
+      if ('mockStt'         in action.partial) localStorage.setItem(LS.MOCK,       String(action.partial.mockStt))
+      if ('wakeWordEnabled' in action.partial) localStorage.setItem(LS.WAKE_WORD,  String(action.partial.wakeWordEnabled))
       return { ...state, settings }
     }
     default: return state
