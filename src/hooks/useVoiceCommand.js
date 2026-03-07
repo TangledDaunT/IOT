@@ -16,7 +16,7 @@ import { useRobot, EXPRESSIONS } from '../context/RobotContext'
 import { useToast } from '../context/ToastContext'
 import { toggleRelay } from '../services/relayService'
 import { startRecording, requestMicPermission, mockTranscribe } from '../services/voiceService'
-import { parseWithGroq, isGroqConfigured, transcribeWithGroq } from '../services/groqService'
+import { parseWithGroq, isGroqConfigured, transcribeWithGroq, streamVoiceResponse } from '../services/groqService'
 import { RELAY_CONFIG, MOCK_MODE } from '../config'
 
 // ─── Relay name → id alias map ─────────────────────────────────────────────
@@ -200,13 +200,28 @@ export function useVoiceCommand() {
     voice.setLatency({ parseMs: Date.now() - parseStart })
 
     if (!command || command.action === 'unknown') {
-      const reason = command?.reason ?? transcript.slice(0, 36)
-      const msg = `Not recognized: "${reason}"`
-      voice.setError(msg)
-      speak('Command not recognized', voice.settings.ttsEnabled)
-      setRobotExpression(EXPRESSIONS.ERROR, 'Huh?', 2500)
-      toast('Voice: command not recognized', 'warn')
-      setTimeout(() => voice.setState(VOICE_STATES.IDLE), 2500)
+      // Not a relay command — respond as a fun chat buddy instead of erroring
+      voice.setState(VOICE_STATES.EXECUTING)
+      setRobotExpression(EXPRESSIONS.HAPPY, '💬', 0)
+
+      let fullResponse = ''
+      try {
+        const relayStates = Object.values(relayCtxState.relays).map((r) => ({ id: r.id, isOn: r.isOn }))
+        for await (const delta of streamVoiceResponse(transcript, null, relayStates)) {
+          fullResponse += delta
+          voice.setResult(fullResponse)
+        }
+      } catch {
+        fullResponse = 'Hmm, not sure about that one!'
+        voice.setResult(fullResponse)
+      }
+
+      if (fullResponse) {
+        speak(fullResponse, voice.settings.ttsEnabled)
+        setRobotExpression(EXPRESSIONS.HAPPY, fullResponse.slice(0, 40), 4000)
+      }
+      const resetDelay = Math.min(3500 + fullResponse.length * 30, 8000)
+      setTimeout(() => voice.setState(VOICE_STATES.IDLE), resetDelay)
       return
     }
 

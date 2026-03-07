@@ -12,6 +12,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useRobot, EXPRESSIONS } from '../../context/RobotContext'
 import { useRelayContext } from '../../context/RelayContext'
+import { useVoiceCommand } from '../../hooks/useVoiceCommand'
+import { VOICE_STATES } from '../../context/VoiceContext'
 
 // ─── Blink controller (exported for reuse in IdleOverlay) ─────────────────
 export function useBlinking(expression) {
@@ -297,6 +299,86 @@ export function RobotSVG({ size = 90, expression = EXPRESSIONS.IDLE, blinking = 
   )
 }
 
+// ─── Tiny mic button rendered below the robot face ───────────────────────
+function RobotMicButton() {
+  const { voiceState, handleMicTap, settings } = useVoiceCommand()
+  if (!settings.enabled) return null
+
+  const isRec  = voiceState === VOICE_STATES.RECORDING
+  const isBusy = voiceState === VOICE_STATES.PROCESSING || voiceState === VOICE_STATES.EXECUTING
+  const isErr  = voiceState === VOICE_STATES.ERROR
+
+  const handleClick = (e) => {
+    e.stopPropagation()  // don't toggle robot minimised
+    handleMicTap()
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+        marginTop: '6px',
+      }}
+    >
+      <button
+        onClick={handleClick}
+        disabled={isBusy}
+        aria-label={isRec ? 'Stop voice' : 'Start voice'}
+        style={{
+          width: '36px', height: '36px', borderRadius: '50%',
+          border: `2px solid ${isRec ? '#ffffff' : isErr ? '#555' : '#2a2a2a'}`,
+          background: isRec ? '#1a1a1a' : '#0a0a0a',
+          boxShadow: isRec ? '0 0 10px 2px rgba(255,255,255,0.18)' : 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: isBusy ? 'not-allowed' : 'pointer',
+          transition: 'all 0.2s ease',
+          outline: 'none',
+          WebkitTapHighlightColor: 'transparent',
+          animation: isRec ? 'none' : 'vPulse 3s ease-in-out infinite',
+          flexShrink: 0,
+        }}
+      >
+        {isRec ? (
+          /* animated bars while recording */
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '14px' }}>
+            {[{ dur: '0.55s', del: '0s' }, { dur: '0.4s', del: '0.15s' }, { dur: '0.65s', del: '0.05s' }].map((b, i) => (
+              <div key={i} style={{
+                width: '3px', height: '100%',
+                background: '#fff', borderRadius: '2px',
+                animation: `vBar ${b.dur} ease-in-out ${b.del} infinite alternate`,
+                transformOrigin: 'bottom',
+              }} />
+            ))}
+          </div>
+        ) : isBusy ? (
+          <span style={{
+            width: '14px', height: '14px',
+            border: '2px solid #ffffff', borderTopColor: 'transparent',
+            borderRadius: '50%', display: 'inline-block',
+            animation: 'vSpin 0.7s linear infinite',
+          }} />
+        ) : (
+          /* mic icon */
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke={isErr ? '#555' : '#555'} strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8"  y1="23" x2="16" y2="23" />
+          </svg>
+        )}
+      </button>
+      <span style={{
+        fontSize: '7px', fontFamily: 'monospace', letterSpacing: '0.1em',
+        textTransform: 'uppercase', color: isRec ? '#fff' : '#2a2a2a',
+      }}>
+        {isRec ? 'rec ●' : isBusy ? '…' : 'talk'}
+      </span>
+    </div>
+  )
+}
+
 // ─── Corner widget ──────────────────────────────────────────────────────────
 export default function RobotFace() {
   const { expression, message, minimized, toggleMinimized } = useRobot()
@@ -352,6 +434,9 @@ export default function RobotFace() {
 
         <RobotSVG size={78} expression={expression} blinking={blinking} />
       </button>
+
+      {/* Mic button — tap to talk, stays on current screen */}
+      <RobotMicButton />
     </div>
   )
 }
