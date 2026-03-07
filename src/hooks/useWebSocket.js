@@ -5,6 +5,7 @@
  *
  * WS events handled:
  *   relay_update      → RelayContext.setRelayState
+ *   initial_state     → RelayContext.setAllRelays (ESP32 sends on connect)
  *   device_heartbeat  → DeviceContext.recordHeartbeat / setDeviceOffline
  *   log_event         → LogContext.addLog
  *   status            → DeviceContext.setWsConnected
@@ -19,7 +20,7 @@ import { getAllDeviceStatus } from '../services/deviceService'
 import { DEVICE_POLL_INTERVAL } from '../config'
 
 export function useWebSocket() {
-  const { setRelayState }                            = useRelayContext()
+  const { setRelayState, setAllRelays }              = useRelayContext()
   const { recordHeartbeat, setDeviceOffline, bulkUpdateDevices, setWsConnected } = useDeviceContext()
   const { addLog }                                   = useLogContext()
   const pollRef   = useRef(null)
@@ -33,6 +34,14 @@ export function useWebSocket() {
     const onRelayUpdate = ({ id, isOn }) => {
       setRelayState(id, isOn)
       addLog('info', 'ws', `Relay ${id} → ${isOn ? 'ON' : 'OFF'} (real-time sync)`, { relay_id: id, isOn })
+    }
+
+    // ESP32 sends initial_state with all relay states on WebSocket connect
+    const onInitialState = ({ relays }) => {
+      if (Array.isArray(relays)) {
+        setAllRelays(relays)
+        addLog('info', 'ws', `Synced ${relays.length} relays from ESP32`, {})
+      }
     }
 
     const onHeartbeat = (payload) => {
@@ -58,6 +67,7 @@ export function useWebSocket() {
     }
 
     wsService.on('relay_update',      onRelayUpdate)
+    wsService.on('initial_state',     onInitialState)
     wsService.on('device_heartbeat',  onHeartbeat)
     wsService.on('log_event',         onLogEvent)
     wsService.on('status',            onStatus)
@@ -73,7 +83,7 @@ export function useWebSocket() {
       try {
         const devices = await getAllDeviceStatus()
         bulkUpdateDevices(devices)
-      } catch {}
+      } catch { /* device poll failed - will retry */ }
     }
 
     pollDevices()
@@ -83,6 +93,7 @@ export function useWebSocket() {
 
     return () => {
       wsService.off('relay_update',     onRelayUpdate)
+      wsService.off('initial_state',    onInitialState)
       wsService.off('device_heartbeat', onHeartbeat)
       wsService.off('log_event',        onLogEvent)
       wsService.off('status',           onStatus)
@@ -90,5 +101,6 @@ export function useWebSocket() {
       // Do NOT call wsService.disconnect() here — service is singleton,
       // hot-reload would kill every reconnect. Only disconnect on explicit logout.
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps — intentional mount-once
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentional mount-once
 }

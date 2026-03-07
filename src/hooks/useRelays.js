@@ -14,12 +14,14 @@ import { getRelayStatus, toggleRelay } from '../services/relayService'
 import { POLL_INTERVAL, RELAY_CONFIG } from '../config'
 
 export function useRelays() {
-  const { state, setRelayLoading, setRelayState, setAllRelays, setGlobalLoading } =
+  const { state, setRelayLoading, setRelayState, setRelayOptimistic, setAllRelays, setGlobalLoading } =
     useRelayContext()
   const { toast } = useToast()
   const { setRobotExpression } = useRobot()
   const { addLog } = useLog()
   const pollRef = useRef(null)
+  // Track in-flight relay IDs to prevent double-tap race conditions
+  const inflightRef = useRef(new Set())
 
   /** Fetch all relay states from backend and sync to context */
   const fetchStatus = useCallback(async () => {
@@ -42,12 +44,15 @@ export function useRelays() {
    */
   const handleToggle = useCallback(
     async (id, currentIsOn) => {
+      // Guard: ignore if this relay already has an in-flight API call
+      if (inflightRef.current.has(id)) return
+      inflightRef.current.add(id)
+
       const nextState = !currentIsOn
-      setRelayLoading(id, true)
       setRobotExpression(EXPRESSIONS.THINKING, 'Sending command…', 0)
 
-      // Optimistic update
-      setRelayState(id, nextState)
+      // Optimistic update: show new state immediately, keep loading spinner
+      setRelayOptimistic(id, nextState)
 
       try {
         const result = await toggleRelay(id, nextState)
@@ -58,7 +63,7 @@ export function useRelays() {
           2500
         )
         const relayName = RELAY_CONFIG.find((r) => r.id === id)?.name ?? `Relay ${id}`
-        toast(`Relay ${id} turned ${result.isOn ? 'ON' : 'OFF'}`, 'success')
+        toast(`${relayName} turned ${result.isOn ? 'ON' : 'OFF'}`, 'success')
         addLog('info', 'relay', `${relayName} → ${result.isOn ? 'ON' : 'OFF'} (manual)`, { relay_id: id, isOn: result.isOn, source: 'manual' })
       } catch (err) {
         // Revert optimistic update on failure
@@ -66,9 +71,11 @@ export function useRelays() {
         toast(err.message || 'Toggle failed', 'error')
         setRobotExpression(EXPRESSIONS.ERROR, 'Command failed!', 3000)
         addLog('error', 'relay', `Toggle failed for relay ${id}: ${err.message ?? 'unknown'}`, { relay_id: id })
+      } finally {
+        inflightRef.current.delete(id)
       }
     },
-    [setRelayLoading, setRelayState, toast, setRobotExpression, addLog]
+    [setRelayOptimistic, setRelayState, toast, setRobotExpression, addLog]
   )
 
   // Initial fetch on mount

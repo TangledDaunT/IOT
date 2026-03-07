@@ -30,9 +30,17 @@ export default function Settings() {
 
   const handleSave = () => {
     const trimmed = ip.trim()
-    if (trimmed && !/^https?:\/\//.test(trimmed)) {
-      toast('URL must start with http:// or https://', 'warn')
-      return
+    if (trimmed) {
+      // Must start with http:// or https://
+      if (!/^https?:\/\//.test(trimmed)) {
+        toast('URL must start with http:// or https://', 'warn')
+        return
+      }
+      // Reject JavaScript injection attempts
+      if (/javascript:/i.test(trimmed) || /data:/i.test(trimmed)) {
+        toast('Invalid URL format', 'error')
+        return
+      }
     }
     localStorage.setItem(LS_KEY, trimmed)
     setSaved(true)

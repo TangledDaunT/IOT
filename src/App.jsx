@@ -18,6 +18,7 @@ import { EXPRESSIONS }    from './context/RobotContext'
 import Layout      from './components/layout/Layout'
 import PageSwiper  from './components/PageSwiper'
 import Dashboard   from './pages/Dashboard'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const Timer    = lazy(() => import('./pages/Timer'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -75,22 +76,24 @@ const PAGES = [
 
 export default function App() {
   return (
-    <RobotProvider>
-      <ToastProvider>
-        <LogProvider>
-          <RelayProvider>
-            <DeviceProvider>
-              <SceneProvider>
-                <VoiceProvider>
-                  <Layout>
-                    <PageSwiper pages={PAGES} />
-                  </Layout>
-                </VoiceProvider>
-              </SceneProvider>
-            </DeviceProvider>
-          </RelayProvider>
-        </LogProvider>
-      </ToastProvider>
-    </RobotProvider>
+    <ErrorBoundary>
+      <RobotProvider>
+        <ToastProvider>
+          <LogProvider>
+            <RelayProvider>
+              <DeviceProvider>
+                <SceneProvider>
+                  <VoiceProvider>
+                    <Layout>
+                      <PageSwiper pages={PAGES} />
+                    </Layout>
+                  </VoiceProvider>
+                </SceneProvider>
+              </DeviceProvider>
+            </RelayProvider>
+          </LogProvider>
+        </ToastProvider>
+      </RobotProvider>
+    </ErrorBoundary>
   )
 }

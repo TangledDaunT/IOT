@@ -41,6 +41,19 @@ function relayReducer(state, action) {
           },
         },
       }
+    // Optimistic update — sets isOn immediately but KEEPS loading=true so spinner stays
+    case 'SET_RELAY_OPTIMISTIC':
+      return {
+        ...state,
+        relays: {
+          ...state.relays,
+          [action.id]: {
+            ...state.relays[action.id],
+            isOn: action.isOn,
+            loading: true,
+          },
+        },
+      }
     case 'SET_ALL_RELAYS': {
       // action.relays: [{ id, isOn }]
       const updated = { ...state.relays }
@@ -72,6 +85,11 @@ export function RelayProvider({ children }) {
     dispatch({ type: 'SET_RELAY_STATE', id, isOn })
   }, [])
 
+  /** Optimistically update relay state (keeps loading=true until API confirms) */
+  const setRelayOptimistic = useCallback((id, isOn) => {
+    dispatch({ type: 'SET_RELAY_OPTIMISTIC', id, isOn })
+  }, [])
+
   /** Bulk-update all relays from a /status API response */
   const setAllRelays = useCallback((relays) => {
     dispatch({ type: 'SET_ALL_RELAYS', relays })
@@ -83,7 +101,7 @@ export function RelayProvider({ children }) {
 
   return (
     <RelayContext.Provider
-      value={{ state, setRelayLoading, setRelayState, setAllRelays, setGlobalLoading }}
+      value={{ state, setRelayLoading, setRelayState, setRelayOptimistic, setAllRelays, setGlobalLoading }}
     >
       {children}
     </RelayContext.Provider>

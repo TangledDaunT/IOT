@@ -4,7 +4,7 @@
  * Shows per-device: online status, WiFi RSSI bars, last heartbeat,
  * uptime, firmware version, IP, and OTA trigger button.
  */
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useDeviceContext } from '../context/DeviceContext'
 import { useLogContext } from '../context/LogContext'
 import { triggerOTA } from '../services/deviceService'
@@ -43,7 +43,7 @@ function rssiToBars(rssi) {
   return 0
 }
 
-function RssiBars({ rssi }) {
+const RssiBars = React.memo(function RssiBars({ rssi }) {
   const bars  = rssiToBars(rssi)
   const color = bars >= 3 ? '#ffffff' : bars === 2 ? '#aaaaaa' : '#555555'
   const heights = [4, 7, 10, 14]
@@ -64,20 +64,13 @@ function RssiBars({ rssi }) {
       )}
     </span>
   )
-}
+})
 
 // ── Device card ───────────────────────────────────────────────────────────
-function DeviceCard({ device }) {
+const DeviceCard = React.memo(function DeviceCard({ device }) {
   const { toast }  = useToast()
   const { addLog } = useLogContext()
   const [otaBusy, setOtaBusy] = useState(false)
-  const [tick, setTick]       = useState(0)
-
-  // Refresh relative timestamps every 5 seconds
-  React.useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 5000)
-    return () => clearInterval(t)
-  }, [])
 
   const handleOTA = useCallback(async () => {
     setOtaBusy(true)
@@ -157,22 +150,29 @@ function DeviceCard({ device }) {
       </button>
     </div>
   )
-}
+})
 
-function StatRow({ label, value, mono }) {
+const StatRow = React.memo(function StatRow({ label, value, mono }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
       <span style={{ fontSize: '8px', color: '#555555', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
       <span style={{ fontSize: '10px', color: '#cccccc', fontFamily: mono ? 'monospace' : 'inherit' }}>{value}</span>
     </div>
   )
-}
+})
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function Devices() {
   const { state }   = useDeviceContext()
   const devices     = Object.values(state.devices)
   const onlineCount = devices.filter((d) => d.online).length
+  
+  // Single timer to refresh relative timestamps (instead of one per card)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 5000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
     <div className="flex flex-col w-full" style={{ height: '100dvh' }}>

@@ -266,8 +266,8 @@ function SceneEditor({ initial, onSave, onCancel }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function Scenes() {
-  const { state, addScene, updateScene, deleteScene, executeScene, cancelScene } = useSceneContext()
-  const { setRelayState, setRelayLoading }   = useRelayContext()
+  const { state, addScene, updateScene, deleteScene, executeScene } = useSceneContext()
+  const { setRelayState, setRelayLoading } = useRelayContext()
   const { addLog }  = useLog()
   const { toast }   = useToast()
   const [editing, setEditing]       = useState(null)   // null | 'new' | sceneId
@@ -280,7 +280,8 @@ export default function Scenes() {
       const result = await toggleRelay(relay_id, isOn)
       setRelayState(relay_id, result.isOn)
     } catch (e) {
-      toast(`Step failed: relay ${relay_id} — ${e.message}`, 'error')
+      toast(`Step failed: relay ${relay_id} — ${e.message ?? 'unknown'}`, 'error')
+      setRelayLoading(relay_id, false)   // clear loading on error
     }
   }, [setRelayState, setRelayLoading, toast])
 

@@ -16,6 +16,7 @@ import { useRobot, EXPRESSIONS } from '../context/RobotContext'
 import { useToast } from '../context/ToastContext'
 import { toggleRelay } from '../services/relayService'
 import { startRecording, requestMicPermission, transcribeAudio, mockTranscribe } from '../services/voiceService'
+import { parseWithGroq, isGroqConfigured } from '../services/groqService'
 import { RELAY_CONFIG, MOCK_MODE } from '../config'
 
 // ─── Relay name → id alias map ─────────────────────────────────────────────
@@ -112,7 +113,7 @@ export const MOCK_STT_COMMANDS = [
 // ─── Main hook ──────────────────────────────────────────────────────────────
 export function useVoiceCommand() {
   const voice              = useVoice()
-  const { setRelayState }  = useRelayContext()
+  const { state: relayCtxState, setRelayState }  = useRelayContext()
   const { setRobotExpression } = useRobot()
   const { toast }          = useToast()
   const stopRef            = useRef(null)   // () => Promise<Blob>
@@ -154,14 +155,15 @@ export function useVoiceCommand() {
         voice.addHistory({ transcript, parsed: command, result: msg, ts: Date.now() })
 
       } else if (command.action === 'status') {
-        const onRelays = RELAY_CONFIG.filter((r) => {
-          // We'll just read RelayContext state via voice.commandHistory context
-          return false // future: pass relay states in
-        })
-        const msg = 'Checking status'
+        // Build a spoken status summary from current relay context
+        const relays     = Object.values(relayCtxState.relays)
+        const onRelays   = relays.filter((r) => r.isOn).map((r) => r.name)
+        const msg = onRelays.length === 0
+          ? 'All systems offline. All relays are off.'
+          : `${onRelays.length} relay${onRelays.length > 1 ? 's' : ''} active: ${onRelays.join(', ')}.`
         voice.setResult(msg)
         speak(msg, voice.settings.ttsEnabled)
-        setRobotExpression(EXPRESSIONS.HAPPY, 'Status', 2000)
+        setRobotExpression(EXPRESSIONS.HAPPY, 'Status OK', 2500)
       }
 
       setTimeout(() => voice.setState(VOICE_STATES.IDLE), 1600)
@@ -171,17 +173,35 @@ export function useVoiceCommand() {
       setRobotExpression(EXPRESSIONS.ERROR, 'Failed!', 3000)
       setTimeout(() => voice.setState(VOICE_STATES.IDLE), 3000)
     }
-  }, [voice, setRelayState, setRobotExpression, toast])
+  }, [voice, setRelayState, relayCtxState, setRobotExpression, toast])
 
   // ── Parse transcript and run intent ──────────────────────────────────
   const processTranscript = useCallback(async (transcript) => {
     voice.setTranscript(transcript)
     const parseStart = Date.now()
-    const command    = parseIntent(transcript)
+
+    let command = null
+
+    // Try Groq NLP first if configured (more flexible natural language understanding)
+    if (isGroqConfigured()) {
+      try {
+        const relayStates = Object.values(relayCtxState.relays).map((r) => ({ id: r.id, isOn: r.isOn }))
+        command = await parseWithGroq(transcript, relayStates)
+      } catch {
+        // Groq failed — will fall through to rule-based
+      }
+    }
+
+    // Fallback to rule-based parser
+    if (!command) {
+      command = parseIntent(transcript)
+    }
+
     voice.setLatency({ parseMs: Date.now() - parseStart })
 
-    if (!command) {
-      const msg = `"${transcript.slice(0, 36)}" — not recognized`
+    if (!command || command.action === 'unknown') {
+      const reason = command?.reason ?? transcript.slice(0, 36)
+      const msg = `Not recognized: "${reason}"`
       voice.setError(msg)
       speak('Command not recognized', voice.settings.ttsEnabled)
       setRobotExpression(EXPRESSIONS.ERROR, 'Huh?', 2500)
@@ -191,7 +211,7 @@ export function useVoiceCommand() {
     }
 
     await executeCommand(command, transcript)
-  }, [voice, executeCommand, setRobotExpression, toast])
+  }, [voice, executeCommand, relayCtxState, setRobotExpression, toast])
 
   // ── Start recording (real mic or mock simulation) ─────────────────────
   const startVoice = useCallback(async (mockText) => {

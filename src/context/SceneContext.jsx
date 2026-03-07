@@ -10,7 +10,7 @@
  * Scenes are persisted in localStorage.
  * `runningSceneId` tracks which scene is executing (if any).
  */
-import { createContext, useContext, useReducer, useCallback, useRef } from 'react'
+import { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react'
 
 const LS_KEY = 'iot_scenes'
 
@@ -23,7 +23,7 @@ function loadFromLS() {
   try {
     const raw = localStorage.getItem(LS_KEY)
     if (raw) return JSON.parse(raw)
-  } catch {}
+  } catch { /* localStorage unavailable or corrupted */ }
   // Default scene so the page isn't empty on first load
   return [
     {
@@ -51,7 +51,7 @@ function loadFromLS() {
 }
 
 function saveToLS(scenes) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(scenes)) } catch {}
+  try { localStorage.setItem(LS_KEY, JSON.stringify(scenes)) } catch { /* localStorage unavailable */ }
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────
@@ -142,6 +142,11 @@ export function SceneProvider({ children }) {
 
   const cancelScene = useCallback(() => {
     cancelRef.current = true
+  }, [])
+
+  // Cancel any running scene on unmount to prevent state updates on dead component
+  useEffect(() => {
+    return () => { cancelRef.current = true }
   }, [])
 
   return (

@@ -87,10 +87,10 @@ class WsService extends Emitter {
           this.emit(msg.type, msg.payload)
           this.emit('any', msg)
         }
-      } catch {}
+      } catch { /* ignore malformed JSON messages */ }
     }
 
-    this._ws.onerror = () => {}  // onclose will fire
+    this._ws.onerror = () => { /* errors handled in onclose */ }
 
     this._ws.onclose = () => {
       clearInterval(this._pingTimer)
@@ -120,8 +120,19 @@ class WsService extends Emitter {
   _startMock() {
     this.emit('status', { connected: true })
 
-    const RELAY_IDS   = [1, 2, 3, 4]
-    const DEVICE_IDS  = ['esp32-01', 'esp32-02']
+    // Fire initial_state immediately so relay context syncs on connect
+    setTimeout(() => {
+      this.emit('initial_state', {
+        relays: [
+          { id: 1, isOn: false },
+          { id: 2, isOn: false },
+          { id: 3, isOn: false },
+          { id: 4, isOn: false },
+        ],
+      })
+    }, 300)
+
+    const RELAY_IDS = [1, 2, 3, 4]
     const FIRMWARE    = ['1.2.3', '1.2.4']
     let uptime1 = 3600, uptime2 = 7200
 

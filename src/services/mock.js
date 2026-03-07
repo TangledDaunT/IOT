@@ -23,10 +23,11 @@ export const mockApi = {
     }
   },
 
-  /** POST /relays/{id}/toggle */
-  async toggleRelay(id) {
+  /** POST /relays/toggle?id=X&state=1|0 */
+  async toggleRelay(id, isOn) {
     await delay(300)
-    mockRelayState[id] = !mockRelayState[id]
+    // If isOn is provided, use it; otherwise toggle (for backwards compatibility)
+    mockRelayState[id] = isOn !== undefined ? isOn : !mockRelayState[id]
     return { data: { id, isOn: mockRelayState[id] } }
   },
 

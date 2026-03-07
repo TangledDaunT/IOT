@@ -5,23 +5,30 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Vite config optimized for low-end mobile (Samsung J6 / Android 8)
 // - Manual chunk splitting to reduce initial bundle size
 // - PWA via workbox for offline support
+//
+// Build modes:
+//   npm run build           → For GitHub Pages (base: /IOT/)
+//   npm run build:esp32     → For ESP32 self-hosting (base: /)
+const isEsp32Build = process.env.BUILD_TARGET === 'esp32'
+const base = isEsp32Build ? '/' : '/IOT/'
+
 export default defineConfig({
-  base: '/IOT/',
+  base,
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.svg', 'icons/icon-512.svg'],
       manifest: {
-        name: 'IoT Control Dashboard',
-        short_name: 'IoT Dash',
-        description: 'Local ESP32 relay control panel',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        name: 'Smart Home Control',
+        short_name: 'Control',
+        description: 'ESP32 relay control panel with AI assistant',
+        theme_color: '#000000',
+        background_color: '#000000',
         display: 'standalone',
         orientation: 'landscape',
-        start_url: '/IOT/',
-        scope: '/IOT/',
+        start_url: base,
+        scope: base,
         icons: [
           {
             src: 'icons/icon-192.svg',

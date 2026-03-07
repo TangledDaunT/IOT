@@ -13,7 +13,7 @@
  * A speech-bubble above shows transcript / result / error text.
  * Latency stats shown in monospace below transcript (debugging aid).
  */
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect } from 'react'
 import { VOICE_STATES } from '../context/VoiceContext'
 import { useVoiceCommand } from '../hooks/useVoiceCommand'
 
@@ -30,15 +30,7 @@ function MicIcon({ color }) {
   )
 }
 
-function CrossIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-      stroke="#666666" strokeWidth="2.5" strokeLinecap="round">
-      <line x1="18" y1="6"  x2="6"  y2="18" />
-      <line x1="6"  y1="6"  x2="18" y2="18" />
-    </svg>
-  )
-}
+// CrossIcon removed - was unused
 
 // Animated bars — 3 vertical rects that bounce at different speeds
 function RecordingBars() {
@@ -57,9 +49,9 @@ function RecordingBars() {
 }
 
 // Thin ring showing 8-second recording countdown
+// Size 56, radius 24, circumference ≈ 150.8 (matches keyframe in index.css)
 function CountdownRing({ size = 56 }) {
-  const r   = (size / 2) - 4
-  const circ = 2 * Math.PI * r
+  const r = (size / 2) - 4
   return (
     <svg
       width={size} height={size}
@@ -69,7 +61,7 @@ function CountdownRing({ size = 56 }) {
         fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
       <circle cx={size / 2} cy={size / 2} r={r}
         fill="none" stroke="#ffffff" strokeWidth="3"
-        strokeDasharray={circ}
+        strokeDasharray={150.8}
         style={{ animation: 'vCountdown 8s linear forwards' }}
       />
     </svg>
@@ -86,31 +78,26 @@ const CONFIG = {
   [S.ERROR]:      { size: 48, border: '#555555', bg: '#111111', shadow: 'none' },
 }
 
-// ── Keyframes injected once ───────────────────────────────────────────────
-const KEYFRAMES = `
-  @keyframes vBar       { from { transform: scaleY(0.15); } to { transform: scaleY(1); } }
-  @keyframes vSpin      { to   { transform: rotate(360deg); } }
-  @keyframes vPulse     { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
-  @keyframes vShake     { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-  @keyframes vCountdown { from { stroke-dashoffset: 0; } to { stroke-dashoffset: CIRC; } }
-`
+// Keyframes are defined in index.css for better performance
 
 export default function VoiceMicButton() {
   const {
     voiceState, transcript, result, error, latency, settings, handleMicTap,
   } = useVoiceCommand()
 
-  // Track whether keyframes have been injected
-  const injectedRef = useRef(false)
+  // Listen for keyboard shortcut events dispatched by GlobalShortcuts
   useEffect(() => {
-    if (injectedRef.current) return
-    injectedRef.current = true
-    const style     = document.createElement('style')
-    const r         = (56 / 2) - 4
-    const circ      = 2 * Math.PI * r
-    style.textContent = KEYFRAMES.replace('CIRC', `${circ}`)
-    document.head.appendChild(style)
-  }, [])
+    const onTrigger = () => handleMicTap()
+    const onStop = () => {
+      if (voiceState === VOICE_STATES.RECORDING) handleMicTap()
+    }
+    window.addEventListener('iot:voice-trigger', onTrigger)
+    window.addEventListener('iot:voice-stop', onStop)
+    return () => {
+      window.removeEventListener('iot:voice-trigger', onTrigger)
+      window.removeEventListener('iot:voice-stop', onStop)
+    }
+  }, [handleMicTap, voiceState])
 
   if (!settings.enabled) return null
 

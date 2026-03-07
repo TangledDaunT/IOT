@@ -108,3 +108,48 @@
     scrollbar-width: none;
   }
 }
+
+/* ── Voice mic button animations ──────────────────────────────────────────── */
+@keyframes vBar {
+  from { transform: scaleY(0.15); }
+  to   { transform: scaleY(1); }
+}
+
+@keyframes vSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes vPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+@keyframes vShake {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-4px); }
+  75%      { transform: translateX(4px); }
+}
+
+/* Countdown ring: size 56px, radius 24px, circumference ≈ 150.8 */
+@keyframes vCountdown {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 150.8; }
+}
+
+/* Idle screen scanline — top to bottom loop */
+@keyframes scanline {
+  0%   { top: -2px; }
+  100% { top: 100%; }
+}
+
+/* AI panel slide-in from right */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* AI panel typing dots */
+@keyframes dotBlink {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1.1); }
+}

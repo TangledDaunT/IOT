@@ -46,7 +46,7 @@ function fmtRelative(ts) {
 const ALL_SOURCES = ['relay', 'voice', 'timer', 'scene', 'device', 'ws', 'system']
 
 // ── Log row ───────────────────────────────────────────────────────────────
-function LogRow({ entry }) {
+const LogRow = React.memo(function LogRow({ entry }) {
   const sc = SOURCE_COLOR[entry.source] ?? SOURCE_COLOR.system
   return (
     <div style={{
@@ -84,7 +84,7 @@ function LogRow({ entry }) {
       </span>
     </div>
   )
-}
+})
 
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function Logs() {

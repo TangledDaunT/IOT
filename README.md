@@ -137,24 +137,81 @@ That's it. The Dashboard and Timer pages read from this config automatically.
 
 ---
 
-## Backend API Contract (FastAPI)
+## Backend API Contract (ESP32)
 
-When the backend is ready, implement these endpoints:
+The ESP32 WebServer exposes these endpoints:
 
 ```
-GET  /relays/status          → [{ id, isOn }]
-POST /relays/{id}/toggle     → { id, isOn }    body: { isOn: bool }
-GET  /health                 → 200 OK
-POST /timers                 → timer object    body: { relayId, scheduledAt, action }
-GET  /timers                 → [timer]
+GET  /relays/status                    → [{ id, isOn }]
+POST /relays/toggle?id=X&state=1|0     → { id, isOn }
+GET  /health                           → "OK"
+WS   /ws                               → WebSocket for real-time updates
 ```
+
+---
+
+## ESP32 Setup
+
+Two options depending on your needs:
+
+### Option A: Basic Setup (Laptop serves UI)
+
+Use `esp32/relay_controller.ino` — simple HTTP-only controller.
+
+1. Open in Arduino IDE
+2. Update WiFi credentials
+3. Upload to ESP32
+4. Enter ESP32 IP in the React app's Settings page
+
+### Option B: Advanced Setup (ESP32 serves everything)
+
+Use `esp32/relay_controller_advanced.ino` — includes:
+- **mDNS**: Access via `http://esp32.local` (no IP needed)
+- **WebSocket**: Real-time relay state sync
+- **Self-hosted UI**: Serves React app directly from ESP32
+
+**Required Libraries** (Arduino Library Manager):
+- ESPAsyncWebServer (by me-no-dev)
+- AsyncTCP (by me-no-dev)
+- ArduinoJson (by Benoit Blanchon)
+
+**Steps:**
+
+```bash
+# 1. Build React app for ESP32
+npm run build:esp32
+
+# 2. Prepare data folder
+python esp32/upload_dashboard.py --prepare-only
+
+# 3. In Arduino IDE:
+#    - Install ESP32 LittleFS plugin
+#    - Open esp32/relay_controller_advanced.ino
+#    - Update WiFi credentials
+#    - Tools → ESP32 Sketch Data Upload
+#    - Upload sketch
+
+# 4. Access dashboard at:
+http://esp32.local
+```
+
+**GPIO Pin Mapping:**
+| Relay | GPIO | Config Name   |
+|-------|------|---------------|
+| 1     | 5    | Main Lights   |
+| 2     | 18   | Exhaust Fan   |
+| 3     | 19   | Water Pump    |
+| 4     | 21   | Backup Power  |
+
+> Relays are active-LOW: `digitalWrite(pin, LOW)` = ON
 
 ---
 
 ## Build
 
 ```bash
-npm run build    # outputs to dist/
+npm run build         # For GitHub Pages (base: /IOT/)
+npm run build:esp32   # For ESP32 self-hosting (base: /)
 npm run preview  # serve dist/ locally
 ```
 
