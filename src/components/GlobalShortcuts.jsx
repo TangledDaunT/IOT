@@ -14,12 +14,13 @@ import { RELAY_CONFIG } from '../config'
 // ── Shortcut help modal ────────────────────────────────────────────────────
 function HelpModal({ onClose }) {
   const shortcuts = [
-    { key: '1 – 4',  desc: 'Toggle relay 1 through 4' },
-    { key: 'R',      desc: 'Refresh relay status' },
-    { key: 'V',      desc: 'Toggle voice command' },
-    { key: '/',      desc: 'Open AI assistant panel' },
-    { key: '?',      desc: 'Show this help' },
-    { key: 'Esc',    desc: 'Cancel / close' },
+    { key: '1 – 4',     desc: 'Toggle relay 1 through 4' },
+    { key: 'R',         desc: 'Refresh relay status' },
+    { key: 'V',         desc: 'Toggle voice command' },
+    { key: '/',         desc: 'Open AI assistant panel' },
+    { key: '?',         desc: 'Show this help' },
+    { key: 'Esc',       desc: 'Cancel / close' },
+    { key: 'Hold ⌥',   desc: 'Push-to-talk mic (left Option)' },
   ]
 
   return (
@@ -102,6 +103,15 @@ export default function GlobalShortcuts({ onOpenChat }) {
     window.dispatchEvent(new CustomEvent('iot:voice-trigger'))
   }, [])
 
+  // Push-to-talk: Left ⌥ held → start recording; released → stop recording
+  const onPTTStart = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('iot:voice-trigger'))
+  }, [])
+
+  const onPTTEnd = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('iot:voice-stop'))
+  }, [])
+
   const onChat = useCallback(() => {
     onOpenChat?.()
   }, [onOpenChat])
@@ -118,7 +128,7 @@ export default function GlobalShortcuts({ onOpenChat }) {
     }
   }, [voice.voiceState])
 
-  useKeyboardShortcuts({ onRelayKey, onRefresh, onVoice, onChat, onHelp, onEscape })
+  useKeyboardShortcuts({ onRelayKey, onRefresh, onVoice, onChat, onHelp, onEscape, onPTTStart, onPTTEnd })
 
   return showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null
 }
