@@ -125,3 +125,142 @@ export async function parseWithGroq(transcript, relayStates = []) {
 export function isGroqConfigured() {
   return Boolean(getGroqKey())
 }
+
+/**
+ * transcribeWithGroq — send audio blob directly to Groq Whisper API.
+ * Bypasses the ESP32 (which has no STT endpoint) and calls Groq directly.
+ * Model: whisper-large-v3-turbo ($0.04/hr audio, fast, accurate)
+ *
+ * @param {Blob} blob - audio blob (webm/ogg/wav)
+ * @returns {Promise<string>} trimmed transcript text
+ */
+export async function transcribeWithGroq(blob) {
+  const key = getGroqKey()
+  if (!key) throw new Error('Groq API key not configured')
+
+  const form = new FormData()
+  form.append('file', blob, 'recording.webm')
+  form.append('model', 'whisper-large-v3-turbo')
+  form.append('language', 'en')
+  form.append('response_format', 'text')
+  form.append('temperature', '0')
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 25_000)
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${key}` },
+      body:    form,
+      signal:  controller.signal,
+    })
+    if (!res.ok) {
+      const detail = await res.text().catch(() => String(res.status))
+      throw new Error(`Groq STT failed (${res.status}): ${detail}`)
+    }
+    return (await res.text()).trim()
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+/**
+ * streamChatResponse — call Groq chat completions with SSE streaming.
+ * Yields each text delta string as it arrives from the stream.
+ *
+ * @param {Array<{role: string, content: string}>} messages
+ * @param {string} [model]
+ * @yields {string} text deltas
+ */
+export async function* streamChatResponse(messages, model = GROQ_MODEL) {
+  const key = getGroqKey()
+  if (!key) throw new Error('Groq API key not configured')
+
+  const res = await fetch(GROQ_API_URL, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      Authorization:   `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream:     true,
+      max_tokens: 120,
+      temperature: 0.7,
+    }),
+  })
+
+  if (!res.ok) throw new Error(`Groq chat HTTP ${res.status}`)
+
+  const reader  = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer    = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // Process all complete (newline-terminated) lines
+      const newlineIdx = buffer.lastIndexOf('\n')
+      if (newlineIdx === -1) continue
+
+      const complete = buffer.slice(0, newlineIdx + 1)
+      buffer = buffer.slice(newlineIdx + 1)
+
+      for (const line of complete.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data: ')) continue
+        const json = trimmed.slice(6)
+        if (json === '[DONE]') return
+        try {
+          const parsed = JSON.parse(json)
+          const delta  = parsed.choices?.[0]?.delta?.content
+          if (delta) yield delta
+        } catch { /* skip malformed SSE chunk */ }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+/** Build system prompt for conversational voice assistant mode */
+function buildConversationPrompt(relayStates = []) {
+  const relayList = RELAY_CONFIG.map((r) => {
+    const s = relayStates.find((rs) => rs.id === r.id)
+    const onOff = s ? (s.isOn ? 'ON' : 'OFF') : 'unknown'
+    return `  - Relay ${r.id}: "${r.name}" (${onOff})`
+  }).join('\n')
+
+  return `You are "Buddy", a friendly and concise smart home AI assistant. \
+You control IoT relay devices at home. Respond in 1–2 short natural sentences (max 25 words). \
+Be warm, direct, and confirm relay actions clearly.
+
+Devices:
+${relayList}`
+}
+
+/**
+ * streamVoiceResponse — stream a spoken reply to a voice command.
+ * If commandResult is provided, confirm it; otherwise respond conversationally.
+ *
+ * @param {string} transcript      - what the user said
+ * @param {string|null} commandResult - action taken, or null for general chat
+ * @param {Array} relayStates      - current relay states for context
+ * @yields {string} text deltas
+ */
+export async function* streamVoiceResponse(transcript, commandResult, relayStates = []) {
+  const userContent = commandResult
+    ? `User said: "${transcript}". Action taken: ${commandResult}. Confirm and respond naturally.`
+    : `User said: "${transcript}". Respond helpfully as a smart home assistant.`
+
+  yield* streamChatResponse([
+    { role: 'system', content: buildConversationPrompt(relayStates) },
+    { role: 'user',   content: userContent },
+  ])
+}

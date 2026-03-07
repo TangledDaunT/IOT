@@ -7,17 +7,15 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import RobotFace, { RobotSVG, useBlinking } from '../robot/RobotFace'
-import { useRobot } from '../../context/RobotContext'
+import { useRobot, EXPRESSIONS } from '../../context/RobotContext'
 import { useRelayContext } from '../../context/RelayContext'
-import { useVoice } from '../../context/VoiceContext'
 import ToastContainer from '../ToastContainer'
 import VoiceMicButton from '../VoiceMicButton'
 import GlobalShortcuts from '../GlobalShortcuts'
 import AiPanel from '../AiPanel'
-import WakeWordIndicator from '../WakeWordIndicator'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useRelayAlerts } from '../../hooks/useRelayAlerts'
-import { usePorcupineWakeWord } from '../../hooks/usePorcupineWakeWord'
+import { useIdleVoice, IDLE_VOICE_PHASE } from '../../hooks/useIdleVoice'
 import { RELAY_CONFIG } from '../../config'
 
 // ── Live clock hook ───────────────────────────────────────────────────────
@@ -34,11 +32,26 @@ const IDLE_TIMEOUT = 45_000 // 45 s of inactivity → return to idle
 
 // ─── Idle overlay ─────────────────────────────────────────────────────────
 function IdleOverlay({ onWake }) {
-  const { expression } = useRobot()
+  const { expression, setRobotExpression } = useRobot()
   const { state: relayState } = useRelayContext()
-  const blinking = useBlinking(expression)
+  const blinking  = useBlinking(expression)
   const [exiting, setExiting] = useState(false)
   const now = useLiveClock()
+
+  // Compute relay states array for voice hook
+  const relayStates = Object.values(relayState?.relays ?? {}).map((r) => ({ id: r.id, isOn: r.isOn }))
+
+  const {
+    phase, liveText, transcript, responseText, errorMsg,
+    startListening, supportsSpeechRecognition,
+  } = useIdleVoice({ enabled: !exiting, relayStates })
+
+  // Mirror voice phase into robot expression
+  useEffect(() => {
+    if (phase === IDLE_VOICE_PHASE.LISTENING)  setRobotExpression(EXPRESSIONS.LOADING,  'Listening…',   0)
+    else if (phase === IDLE_VOICE_PHASE.PROCESSING) setRobotExpression(EXPRESSIONS.THINKING, 'Processing…',  0)
+    else if (phase === IDLE_VOICE_PHASE.RESPONDING) setRobotExpression(EXPRESSIONS.HAPPY,    'Responding…',  0)
+  }, [phase, setRobotExpression])
 
   const handleTap = useCallback(() => {
     if (exiting) return
@@ -49,7 +62,8 @@ function IdleOverlay({ onWake }) {
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   const activeRelays = RELAY_CONFIG.filter((r) => relayState?.relays?.[r.id]?.isOn)
-  const offCount = RELAY_CONFIG.length - activeRelays.length
+  const offCount     = RELAY_CONFIG.length - activeRelays.length
+  const isVoiceActive = phase !== IDLE_VOICE_PHASE.IDLE
 
   return (
     <div
@@ -89,10 +103,10 @@ function IdleOverlay({ onWake }) {
           top: c[0] === 't' ? 16 : 'auto', bottom: c[0] === 'b' ? 16 : 'auto',
           left: c[1] === 'l' ? 16 : 'auto', right: c[1] === 'r' ? 16 : 'auto',
           width: '18px', height: '18px',
-          borderTop: c[0] === 't' ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          borderTop:    c[0] === 't' ? '1px solid rgba(255,255,255,0.07)' : 'none',
           borderBottom: c[0] === 'b' ? '1px solid rgba(255,255,255,0.07)' : 'none',
-          borderLeft: c[1] === 'l' ? '1px solid rgba(255,255,255,0.07)' : 'none',
-          borderRight: c[1] === 'r' ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          borderLeft:   c[1] === 'l' ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          borderRight:  c[1] === 'r' ? '1px solid rgba(255,255,255,0.07)' : 'none',
           pointerEvents: 'none',
         }} />
       ))}
@@ -109,19 +123,118 @@ function IdleOverlay({ onWake }) {
         </div>
       )}
 
-      {/* Robot — centre */}
+      {/* Robot + voice interaction area — centre */}
       <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px',
         transform: exiting ? 'translateY(110vh) scale(0.15)' : 'translateY(0) scale(1)',
         transformOrigin: 'center bottom',
         transition: exiting ? 'transform 0.6s cubic-bezier(0.55, 0, 1, 0.45)' : 'none',
+        maxWidth: '360px', width: '100%', padding: '0 24px',
       }}>
         <RobotSVG size={180} expression={expression} blinking={blinking} />
+
+        {/* ── Voice interaction panel ── */}
         {!exiting && (
-          <p style={{ color: '#2a2a2a', fontSize: '11px', letterSpacing: '0.2em', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+          <div style={{
+            minHeight: '76px',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: '7px',
+            width: '100%', textAlign: 'center',
+          }}>
+
+            {/* LISTENING — blue dot + label + live words */}
+            {phase === IDLE_VOICE_PHASE.LISTENING && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <span style={{
+                    width: '7px', height: '7px', borderRadius: '50%',
+                    background: '#4aa8ff', display: 'inline-block',
+                    animation: 'vPulse 1s ease-in-out infinite',
+                  }} />
+                  <span style={{ fontSize: '10px', fontFamily: 'monospace', letterSpacing: '0.22em', color: '#4aa8ff', textTransform: 'uppercase' }}>
+                    Listening
+                  </span>
+                </div>
+                {liveText && (
+                  <p style={{
+                    color: '#d8d8d8', fontSize: '14px', fontFamily: 'monospace',
+                    lineHeight: 1.45, marginTop: '4px', textAlign: 'left', width: '100%',
+                    borderLeft: '2px solid rgba(74,168,255,0.45)', paddingLeft: '10px',
+                  }}>
+                    {liveText}
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* PROCESSING — pulsing indicator */}
+            {phase === IDLE_VOICE_PHASE.PROCESSING && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <span style={{
+                  width: '7px', height: '7px', borderRadius: '50%',
+                  background: '#555', display: 'inline-block',
+                  animation: 'vPulse 0.7s ease-in-out infinite',
+                }} />
+                <span style={{ fontSize: '10px', fontFamily: 'monospace', letterSpacing: '0.22em', color: '#555', textTransform: 'uppercase' }}>
+                  Thinking
+                </span>
+              </div>
+            )}
+
+            {/* RESPONDING — user text + streaming reply + cursor */}
+            {phase === IDLE_VOICE_PHASE.RESPONDING && (
+              <div style={{ width: '100%', textAlign: 'left' }}>
+                {transcript && (
+                  <p style={{
+                    color: '#363636', fontSize: '11px', fontFamily: 'monospace',
+                    marginBottom: '8px', letterSpacing: '0.02em',
+                  }}>
+                    you: &ldquo;{transcript}&rdquo;
+                  </p>
+                )}
+                <p style={{
+                  color: '#e8e8e8', fontSize: '14px', fontFamily: 'monospace',
+                  lineHeight: 1.55, borderLeft: '2px solid rgba(255,255,255,0.14)',
+                  paddingLeft: '10px',
+                }}>
+                  {responseText}
+                  {responseText.length > 0 && (
+                    <span style={{ animation: 'cursorBlink 1s step-end infinite', color: '#4aa8ff' }}>▋</span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Error (shown briefly before resetting to IDLE) */}
+            {errorMsg && phase === IDLE_VOICE_PHASE.IDLE && (
+              <p style={{ color: '#f05555', fontSize: '10px', fontFamily: 'monospace', letterSpacing: '0.1em' }}>
+                {errorMsg}
+              </p>
+            )}
+
+            {/* IDLE hint */}
+            {phase === IDLE_VOICE_PHASE.IDLE && !errorMsg && (
+              <p style={{
+                color: '#1e1e1e', fontSize: '10px', letterSpacing: '0.2em',
+                fontFamily: 'monospace', textTransform: 'uppercase',
+              }}>
+                {supportsSpeechRecognition ? 'say "hey buddy"' : 'tap to wake'}
+              </p>
+            )}
+
+          </div>
+        )}
+
+        {/* Tap-to-wake label — only in IDLE phase */}
+        {!exiting && !isVoiceActive && (
+          <p style={{
+            color: '#1c1c1c', fontSize: '10px', letterSpacing: '0.2em',
+            fontFamily: 'monospace', textTransform: 'uppercase', marginTop: '2px',
+          }}>
             tap to wake
           </p>
         )}
+
       </div>
 
       {/* Relay status — bottom */}
@@ -136,7 +249,7 @@ function IdleOverlay({ onWake }) {
                   padding: '2px 7px', border: '1px solid rgba(255,255,255,0.18)',
                   borderRadius: '3px', background: 'rgba(255,255,255,0.03)',
                 }}>
-                  {r.label} <span style={{ opacity: 0.5 }}>●</span>
+                  {r.name} <span style={{ opacity: 0.5 }}>●</span>
                 </span>
               ))}
             </div>
@@ -154,19 +267,12 @@ function IdleOverlay({ onWake }) {
 export default function Layout({ children }) {
   useWebSocket()
   useRelayAlerts()
-  // Wake word \u2014 active only when voice+wake-word enabled and app is awake
-  const { settings: voiceSettings } = useVoice()
-  const [awake, setAwake] = useState(false)
-  const { wakeState, wakeError } = usePorcupineWakeWord({
-    enabled: voiceSettings.enabled && voiceSettings.wakeWordEnabled && awake,
-  })
   const [idleMode, setIdleMode] = useState(true)
   const [chatOpen, setChatOpen] = useState(false)
   const timerRef = useRef(null)
 
   const goIdle = useCallback(() => {
     setIdleMode(true)
-    setAwake(false)
     setChatOpen(false)
   }, [])
 
@@ -177,7 +283,6 @@ export default function Layout({ children }) {
 
   const wakeUp = useCallback(() => {
     setIdleMode(false)
-    setAwake(true)
     resetIdleTimer()
   }, [resetIdleTimer])
 
@@ -205,7 +310,6 @@ export default function Layout({ children }) {
       {!idleMode && <VoiceMicButton />}
       {!idleMode && <GlobalShortcuts onOpenChat={() => setChatOpen(true)} />}
       {!idleMode && <AiPanel open={chatOpen} onClose={() => setChatOpen(false)} />}
-      {!idleMode && <WakeWordIndicator wakeState={wakeState} wakeError={wakeError} />}
 
       {/* Idle overlay */}
       {idleMode && <IdleOverlay onWake={wakeUp} />}

@@ -15,8 +15,8 @@ import { useRelayContext } from '../context/RelayContext'
 import { useRobot, EXPRESSIONS } from '../context/RobotContext'
 import { useToast } from '../context/ToastContext'
 import { toggleRelay } from '../services/relayService'
-import { startRecording, requestMicPermission, transcribeAudio, mockTranscribe } from '../services/voiceService'
-import { parseWithGroq, isGroqConfigured } from '../services/groqService'
+import { startRecording, requestMicPermission, mockTranscribe } from '../services/voiceService'
+import { parseWithGroq, isGroqConfigured, transcribeWithGroq } from '../services/groqService'
 import { RELAY_CONFIG, MOCK_MODE } from '../config'
 
 // ─── Relay name → id alias map ─────────────────────────────────────────────
@@ -279,7 +279,7 @@ export function useVoiceCommand() {
     try {
       const blob       = await stopRef.current()
       stopRef.current  = null
-      const transcript = await transcribeAudio(blob)
+      const transcript = await transcribeWithGroq(blob)
       voice.setLatency({ sttMs: Date.now() - sttStart })
       await processTranscript(transcript)
     } catch (e) {
