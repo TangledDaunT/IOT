@@ -4,3 +4,12 @@ dist
 .env.local
 .env.production
 *.ppn
+
+# Generated ESP32 web build artifacts (can contain bundled client secrets)
+esp32/data/assets/
+esp32/data/icons/
+esp32/data/index.html
+esp32/data/manifest.webmanifest
+esp32/data/sw.js
+esp32/data/workbox-*.js
+esp32/data/*.pv
