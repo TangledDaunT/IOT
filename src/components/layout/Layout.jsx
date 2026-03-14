@@ -43,7 +43,7 @@ function IdleOverlay({ onWake }) {
 
   const {
     phase, liveText, transcript, responseText, errorMsg,
-    startListening, supportsSpeechRecognition,
+    supportsSpeechRecognition,
   } = useIdleVoice({ enabled: !exiting, relayStates })
 
   // Mirror voice phase into robot expression

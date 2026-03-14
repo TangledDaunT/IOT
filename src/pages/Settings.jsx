@@ -10,6 +10,7 @@ import { useRobot, EXPRESSIONS } from '../context/RobotContext'
 import { MOCK_MODE, RELAY_CONFIG } from '../config'
 import { useVoiceCommand, MOCK_STT_COMMANDS } from '../hooks/useVoiceCommand'
 import { requestMicPermission } from '../services/voiceService'
+import { useSmoke } from '../context/SmokeContext'
 
 const LS_KEY = 'iot_base_url'
 
@@ -22,6 +23,7 @@ export default function Settings() {
   const [saved, setSaved]     = useState(false)
   const [testing, setTesting] = useState(false)
   const [pingResult, setPingResult] = useState(null)
+  const { state: smokeState, cigarettesToday, updatePolicy } = useSmoke()
 
   useEffect(() => {
     if (ip) setRobotExpression(EXPRESSIONS.THINKING, 'Configuring…', 0)
@@ -80,6 +82,16 @@ export default function Settings() {
     }
   }
 
+  const handlePolicyChange = async (partial) => {
+    try {
+      await updatePolicy(partial)
+      toast('Smoke automation policy updated', 'success')
+    } catch (err) {
+      toast(err.message || 'Policy update failed', 'error')
+      setRobotExpression(EXPRESSIONS.ERROR, 'Policy failed', 2500)
+    }
+  }
+
   return (
     <div className="flex w-full gap-3 px-3 pb-3 overflow-hidden" style={{ height: '100dvh', paddingTop: 'max(env(safe-area-inset-top), 28px)' }}>
       {/* Left — backend URL config */}
@@ -115,6 +127,7 @@ export default function Settings() {
           <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-2">Info</p>
           <InfoRow label="Version" value="1.0.0" />
           <InfoRow label="Mode"    value={MOCK_MODE ? 'MOCK' : 'LIVE'} valueClass={MOCK_MODE ? 'text-relay-warn' : 'text-relay-on'} />
+          <InfoRow label="Cigs today" value={String(cigarettesToday)} />
         </Card>
       </div>
 
@@ -175,6 +188,91 @@ export default function Settings() {
             </Button>
           )}
         </Card>
+
+        <Card className="p-3 shrink-0">
+          <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-2">Smoke Automation</p>
+
+          <div className="flex items-center justify-between py-1.5 border-b border-surface-700">
+            <span className="text-xs text-slate-500">Mode</span>
+            <select
+              value={smokeState.policy.mode}
+              onChange={(e) => handlePolicyChange({ mode: e.target.value })}
+              className="bg-surface-700 border border-surface-600 rounded px-2 py-1 text-[10px] text-white font-mono"
+            >
+              <option value="auto">AUTO</option>
+              <option value="force_on">FORCE ON</option>
+              <option value="force_off">FORCE OFF</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 border-b border-surface-700">
+            <span className="text-xs text-slate-500">Fan relay</span>
+            <select
+              value={smokeState.policy.fanRelayId}
+              onChange={(e) => handlePolicyChange({ fanRelayId: Number(e.target.value) })}
+              className="bg-surface-700 border border-surface-600 rounded px-2 py-1 text-[10px] text-white font-mono"
+            >
+              {RELAY_CONFIG.map((relay) => (
+                <option key={relay.id} value={relay.id}>{relay.id} - {relay.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <VoiceToggle
+            label="Safety Override"
+            value={smokeState.policy.safetyOverrideEnabled}
+            onChange={(v) => handlePolicyChange({ safetyOverrideEnabled: v })}
+          />
+
+          <NumericSetting
+            label="On threshold"
+            value={smokeState.policy.smokeThresholdOn}
+            onCommit={(v) => handlePolicyChange({ smokeThresholdOn: v })}
+          />
+          <NumericSetting
+            label="Off threshold"
+            value={smokeState.policy.smokeThresholdOff}
+            onCommit={(v) => handlePolicyChange({ smokeThresholdOff: v })}
+          />
+          <NumericSetting
+            label="Cooldown ms"
+            value={smokeState.policy.postSmokeCooldownMs}
+            onCommit={(v) => handlePolicyChange({ postSmokeCooldownMs: v })}
+          />
+          <NumericSetting
+            label="Min smoke ms"
+            value={smokeState.policy.minSmokeDurationMs}
+            onCommit={(v) => handlePolicyChange({ minSmokeDurationMs: v })}
+          />
+          <NumericSetting
+            label="Debounce ms"
+            value={smokeState.policy.debounceMs}
+            onCommit={(v) => handlePolicyChange({ debounceMs: v })}
+          />
+          <NumericSetting
+            label="Trigger offset"
+            value={smokeState.policy.triggerOffset}
+            onCommit={(v) => handlePolicyChange({ triggerOffset: v })}
+          />
+          <NumericSetting
+            label="Timezone mins"
+            value={smokeState.policy.timezoneOffsetMinutes}
+            allowNegative
+            onCommit={(v) => handlePolicyChange({ timezoneOffsetMinutes: v })}
+          />
+
+          <div className="pt-2 text-[10px] font-mono">
+            <div className="flex justify-between text-slate-400">
+              <span>OpenClaw sync</span>
+              <span className={smokeState.syncStatus.pending > 0 ? 'text-relay-warn' : smokeState.syncStatus.failed > 0 ? 'text-relay-err' : 'text-relay-on'}>
+                {smokeState.syncStatus.pending > 0 ? `PENDING ${smokeState.syncStatus.pending}` : smokeState.syncStatus.failed > 0 ? `FAILED ${smokeState.syncStatus.failed}` : 'SYNCED'}
+              </span>
+            </div>
+            {smokeState.syncStatus.lastError && (
+              <p className="text-relay-err mt-1">{smokeState.syncStatus.lastError}</p>
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   )
@@ -211,6 +309,31 @@ function VoiceToggle({ label, value, onChange }) {
           background: '#fff', transition: 'left 0.2s',
         }} />
       </button>
+    </div>
+  )
+}
+
+function NumericSetting({ label, value, onCommit, allowNegative = false }) {
+  const [draft, setDraft] = useState(String(value ?? ''))
+
+  useEffect(() => {
+    setDraft(String(value ?? ''))
+  }, [value])
+
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-surface-700">
+      <span className="text-xs text-slate-500">{label}</span>
+      <input
+        inputMode="numeric"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const n = Number(draft)
+          if (Number.isFinite(n) && (allowNegative || n >= 0)) onCommit(Math.round(n))
+          else setDraft(String(value ?? ''))
+        }}
+        className="w-20 bg-surface-700 border border-surface-600 rounded px-2 py-1 text-[10px] text-white font-mono"
+      />
     </div>
   )
 }

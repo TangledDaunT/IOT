@@ -9,7 +9,6 @@ import { useRelayContext } from '../context/RelayContext'
 import { useVoice, VOICE_STATES } from '../context/VoiceContext'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { toggleRelay, getRelayStatus } from '../services/relayService'
-import { RELAY_CONFIG } from '../config'
 
 // ── Shortcut help modal ────────────────────────────────────────────────────
 function HelpModal({ onClose }) {

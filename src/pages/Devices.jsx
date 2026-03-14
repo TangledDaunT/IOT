@@ -125,6 +125,10 @@ const DeviceCard = React.memo(function DeviceCard({ device }) {
         <StatRow label="Uptime"    value={formatUptime(device.uptime)} />
         <StatRow label="Firmware"  value={device.firmware ?? '—'} mono />
         <StatRow label="IP"        value={device.ip ?? '—'}       mono />
+        <StatRow label="WiFi"      value={device.wifi == null ? '—' : (device.wifi ? 'Connected' : 'Down')} />
+        <StatRow label="MQTT"      value={device.mqtt == null ? '—' : (device.mqtt ? `Connected (${device.mqttState ?? 0})` : `Down (${device.mqttState ?? 0})`)} />
+        <StatRow label="Phase"     value={device.phase ?? '—'} mono />
+        <StatRow label="Sensor"    value={device.sensorHealthy == null ? '—' : (device.sensorHealthy ? 'Healthy' : 'Unstable')} />
         <StatRow label="Relays"    value={device.relays?.join(', ') ?? '—'} />
       </div>
 

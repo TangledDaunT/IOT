@@ -226,7 +226,7 @@ export function useVoiceCommand() {
     }
 
     await executeCommand(command, transcript)
-  }, [voice, executeCommand, relayCtxState, setRobotExpression, toast])
+  }, [voice, executeCommand, relayCtxState, setRobotExpression])
 
   // ── Start recording (real mic or mock simulation) ─────────────────────
   const startVoice = useCallback(async (mockText) => {

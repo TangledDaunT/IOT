@@ -130,7 +130,7 @@ export function usePorcupineWakeWord({ enabled = true } = {}) {
       setError(friendlyMsg)
       setState(WAKE_STATES.ERROR)
     }
-  }, [accessKey, stop])
+  }, [accessKey])
 
   // Auto-start when enabled
   useEffect(() => {

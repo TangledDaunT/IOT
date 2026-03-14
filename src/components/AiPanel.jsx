@@ -106,7 +106,6 @@ function Bubble({ role, content, isLoading }) {
 
 // ── Relay status bar ──────────────────────────────────────────────────────
 function RelayStatusBar({ relayState }) {
-  const active = RELAY_CONFIG.filter((r) => relayState?.relays?.[r.id]?.isOn)
   return (
     <div style={{
       display: 'flex', gap: '8px', flexWrap: 'wrap',
@@ -125,7 +124,7 @@ function RelayStatusBar({ relayState }) {
             borderRadius: '4px',
             transition: 'color 0.3s, border-color 0.3s',
           }}>
-            {r.label}
+            {r.name}
             <span style={{ marginLeft: '4px', opacity: 0.6 }}>{on ? '●' : '○'}</span>
           </span>
         )

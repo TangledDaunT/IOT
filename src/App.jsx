@@ -14,6 +14,7 @@ import { LogProvider }    from './context/LogContext'
 import { DeviceProvider } from './context/DeviceContext'
 import { SceneProvider }  from './context/SceneContext'
 import { EXPRESSIONS }    from './context/RobotContext'
+import { SmokeProvider } from './context/SmokeContext'
 
 import Layout      from './components/layout/Layout'
 import PageSwiper  from './components/PageSwiper'
@@ -84,13 +85,15 @@ export default function App() {
             <LogProvider>
               <RelayProvider>
                 <DeviceProvider>
-                  <SceneProvider>
-                    <VoiceProvider>
-                      <Layout>
-                        <PageSwiper pages={PAGES} />
-                      </Layout>
-                    </VoiceProvider>
-                  </SceneProvider>
+                  <SmokeProvider>
+                    <SceneProvider>
+                      <VoiceProvider>
+                        <Layout>
+                          <PageSwiper pages={PAGES} />
+                        </Layout>
+                      </VoiceProvider>
+                    </SceneProvider>
+                  </SmokeProvider>
                 </DeviceProvider>
               </RelayProvider>
             </LogProvider>

@@ -135,6 +135,15 @@ class WsService extends Emitter {
     const RELAY_IDS = [1, 2, 3, 4]
     const FIRMWARE    = ['1.2.3', '1.2.4']
     let uptime1 = 3600, uptime2 = 7200
+    let smokeRaw = 125
+    let smokeSmooth = 120
+    let cleanBaseline = 110
+    let smokeReference = 210
+    let episodeOpen = false
+    let episodeId = null
+    let episodeStart = 0
+    let fanManuallyDisabled = false
+    let samplesInWindow = 0
 
     // Device heartbeats every 8s
     this._mockTimers.push(setInterval(() => {
@@ -153,6 +162,86 @@ class WsService extends Emitter {
         this.emit('any', { type: 'relay_update', payload: { id, isOn } })
       }
     }, 12_000))
+
+    // Smoke telemetry every 2.5s with occasional synthetic episodes
+    this._mockTimers.push(setInterval(() => {
+      const burst = Math.random() < 0.07 ? 150 : 0
+      const jitter = Math.floor(Math.random() * 14) - 7
+      smokeRaw = Math.max(80, smokeRaw + jitter + burst)
+      smokeSmooth = Math.round(smokeSmooth * 0.78 + smokeRaw * 0.22)
+      samplesInWindow = Math.min(1000, samplesInWindow + 1)
+
+      const intensity = Math.max(0, Math.min(1, (smokeSmooth - 110) / 320))
+      const smokeActive = intensity >= 0.35
+      const band = intensity < 0.15 ? 'good' : intensity < 0.35 ? 'moderate' : intensity < 0.65 ? 'unhealthy' : 'hazardous'
+
+      if (smokeActive && !episodeOpen) {
+        episodeOpen = true
+        episodeStart = Date.now()
+        episodeId = `mock-${episodeStart}`
+        this.emit('smoke_event', {
+          eventType: 'smoke_detected',
+          eventId: `evt-${episodeStart}-detected`,
+          episodeId,
+          startedAt: episodeStart,
+          ts: Date.now(),
+        })
+      }
+
+      if (!smokeActive && episodeOpen && Date.now() - episodeStart > 8000) {
+        episodeOpen = false
+        const endedAt = Date.now()
+        this.emit('smoke_event', {
+          eventType: 'cigarette_episode_closed',
+          eventId: `evt-${endedAt}-closed`,
+          episodeId,
+          startedAt: episodeStart,
+          endedAt,
+          durationMs: endedAt - episodeStart,
+          peakIntensity: intensity,
+          ts: endedAt,
+        })
+        this.emit('smoke_event', {
+          eventType: 'smoke_cleared',
+          eventId: `evt-${endedAt}-cleared`,
+          episodeId,
+          ts: endedAt,
+        })
+        episodeId = null
+      }
+
+      this.emit('smoke_telemetry', {
+        raw: smokeRaw,
+        smoothed: smokeSmooth,
+        baseline: 110,
+        cleanBaseline,
+        smokeReference,
+        smokeReferenceReady: true,
+        intensity,
+        aqiBand: band,
+        smokeActive,
+        fanAutoActive: smokeActive && !fanManuallyDisabled,
+        fanManuallyDisabled,
+        cooldownRemainingMs: smokeActive ? 120000 : 0,
+        airQualityAvg5m: Math.max(0, Math.min(1, (smokeSmooth - cleanBaseline) / 320)),
+        airQualityAvg5mReady: samplesInWindow >= 1000,
+        samplesInWindow,
+        windowMs: 300000,
+        phase: 'normal_operation',
+        sensorHealthy: true,
+        ts: Date.now(),
+      })
+
+      if (samplesInWindow % 20 === 0) {
+        this.emit('air_quality_average', {
+          airQualityAvg5m: Math.max(0, Math.min(1, (smokeSmooth - cleanBaseline) / 320)),
+          airQualityAvg5mReady: samplesInWindow >= 1000,
+          samplesInWindow,
+          windowMs: 300000,
+          timestamp: Date.now(),
+        })
+      }
+    }, 2_500))
   }
 }
 

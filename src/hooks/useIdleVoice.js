@@ -292,7 +292,7 @@ export function useIdleVoice({ enabled = true, relayStates = [] } = {}) {
       clearTimeout(resetTimerRef.current)
       window.speechSynthesis?.cancel()
     }
-  }, [enabled]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled])
 
   return {
     phase,

@@ -49,7 +49,7 @@ def run_command(cmd, cwd=None):
 def build_react():
     """Build the React app for production."""
     print("\n📦 Building React app...")
-    run_command("npm run build", cwd=PROJECT_ROOT)
+    run_command("npm run build:esp32", cwd=PROJECT_ROOT)
 
 
 def prepare_data_folder():
@@ -69,8 +69,8 @@ def prepare_data_folder():
         else:
             shutil.copy2(item, dest)
     
-    # Optionally gzip large files (HTML, JS, CSS)
-    # ESPAsyncWebServer can serve .gz files automatically
+    # Optionally gzip large files while keeping originals.
+    # Keeping originals avoids root/index fallback issues on some setups.
     gzip_extensions = {'.html', '.js', '.css', '.svg', '.json'}
     total_saved = 0
     
@@ -87,8 +87,6 @@ def prepare_data_folder():
             saved = original_size - gz_size
             total_saved += saved
             
-            # Remove original, keep gzipped version
-            file.unlink()
             print(f"  Compressed: {file.name} ({original_size}B → {gz_size}B, saved {saved}B)")
     
     print(f"\n  Total compression savings: {total_saved / 1024:.1f} KB")

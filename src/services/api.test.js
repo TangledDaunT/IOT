@@ -104,4 +104,26 @@ describe('attachInterceptors', () => {
     
     expect(result).toBe(mockResponse)
   })
+
+  it('normalizes 423 safety-lock retry payload', async () => {
+    const client = createApiClient()
+    attachInterceptors(client)
+
+    const mockError = {
+      response: {
+        data: { error: 'Relay 1 locked OFF due to smoke safety hold', retryAfterMs: 19000 },
+        status: 423,
+      },
+    }
+
+    const interceptor = client.interceptors.response.handlers[0]
+
+    try {
+      await interceptor.rejected(mockError)
+    } catch (err) {
+      expect(err.message).toBe('Relay 1 locked OFF due to smoke safety hold')
+      expect(err.status).toBe(423)
+      expect(err.retryAfterMs).toBe(19000)
+    }
+  })
 })

@@ -10,15 +10,17 @@ import { useToast } from '../context/ToastContext'
 import { useRobot } from '../context/RobotContext'
 import { EXPRESSIONS } from '../context/RobotContext'
 import { useLog } from '../context/LogContext'
+import { useSmoke } from '../context/SmokeContext'
 import { getRelayStatus, toggleRelay } from '../services/relayService'
 import { POLL_INTERVAL, RELAY_CONFIG } from '../config'
 
 export function useRelays() {
-  const { state, setRelayLoading, setRelayState, setRelayOptimistic, setAllRelays, setGlobalLoading } =
+  const { state, setRelayState, setRelayOptimistic, setAllRelays, setGlobalLoading } =
     useRelayContext()
   const { toast } = useToast()
   const { setRobotExpression } = useRobot()
   const { addLog } = useLog()
+  const { state: smokeState } = useSmoke()
   const pollRef = useRef(null)
   // Track in-flight relay IDs to prevent double-tap race conditions
   const inflightRef = useRef(new Set())
@@ -44,6 +46,15 @@ export function useRelays() {
    */
   const handleToggle = useCallback(
     async (id, currentIsOn) => {
+      const lockActive = smokeState.telemetry.smokeActive && smokeState.telemetry.cooldownRemainingMs > 0
+      if (id === 1 && !currentIsOn && lockActive) {
+        const waitMs = smokeState.telemetry.cooldownRemainingMs
+        const waitSec = Math.max(1, Math.ceil(waitMs / 1000))
+        toast(`Relay 1 locked for safety (${waitSec}s remaining)`, 'warn')
+        addLog('warn', 'relay', 'Relay 1 ON blocked by smoke safety lock', { retryAfterMs: waitMs })
+        return
+      }
+
       // Guard: ignore if this relay already has an in-flight API call
       if (inflightRef.current.has(id)) return
       inflightRef.current.add(id)
@@ -68,14 +79,29 @@ export function useRelays() {
       } catch (err) {
         // Revert optimistic update on failure
         setRelayState(id, currentIsOn)
-        toast(err.message || 'Toggle failed', 'error')
+        if (err?.status === 423) {
+          const waitMs = Number(err.retryAfterMs ?? 0)
+          const waitSec = waitMs > 0 ? Math.ceil(waitMs / 1000) : null
+          toast(
+            waitSec
+              ? `Safety lock active. Retry in ${waitSec}s`
+              : (err.message || 'Safety lock active'),
+            'warn'
+          )
+          addLog('warn', 'relay', 'Relay command blocked by safety lock', {
+            relay_id: id,
+            retryAfterMs: waitMs,
+          })
+        } else {
+          toast(err.message || 'Toggle failed', 'error')
+          addLog('error', 'relay', `Toggle failed for relay ${id}: ${err.message ?? 'unknown'}`, { relay_id: id })
+        }
         setRobotExpression(EXPRESSIONS.ERROR, 'Command failed!', 3000)
-        addLog('error', 'relay', `Toggle failed for relay ${id}: ${err.message ?? 'unknown'}`, { relay_id: id })
       } finally {
         inflightRef.current.delete(id)
       }
     },
-    [setRelayOptimistic, setRelayState, toast, setRobotExpression, addLog]
+    [setRelayOptimistic, setRelayState, toast, setRobotExpression, addLog, smokeState.telemetry.cooldownRemainingMs, smokeState.telemetry.smokeActive]
   )
 
   // Initial fetch on mount

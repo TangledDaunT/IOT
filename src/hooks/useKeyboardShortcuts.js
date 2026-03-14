@@ -94,6 +94,5 @@ export function useKeyboardShortcuts({ onRelayKey, onRefresh, onVoice, onChat, o
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup',   onKeyUp)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onRelayKey, onRefresh, onVoice, onChat, onHelp, onEscape, onPTTStart, onPTTEnd])
 }

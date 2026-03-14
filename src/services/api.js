@@ -6,7 +6,7 @@
  * needing a page reload (the factory function is called lazily).
  */
 import axios from 'axios'
-import { getBaseUrl, API_TIMEOUT } from '../config'
+import { getBaseUrl, getFallbackBaseUrls, normalizeBaseUrl, API_TIMEOUT } from '../config'
 
 /**
  * Creates a fresh axios instance with the current base URL.
@@ -15,12 +15,27 @@ import { getBaseUrl, API_TIMEOUT } from '../config'
  */
 export function createApiClient() {
   return axios.create({
-    baseURL: getBaseUrl(),
+    baseURL: normalizeBaseUrl(getBaseUrl()),
     timeout: API_TIMEOUT,
     headers: {
       'Content-Type': 'application/json',
     },
   })
+}
+
+function normalizeError(error) {
+  const payload = error.response?.data
+  return {
+    message:
+      payload?.detail ||
+      payload?.message ||
+      payload?.error ||
+      (error.code === 'ECONNABORTED' ? 'Request timed out' : null) ||
+      error.message ||
+      'Unknown network error',
+    status: error.response?.status ?? null,
+    retryAfterMs: Number(payload?.retryAfterMs ?? payload?.retry_after_ms ?? 0) || 0,
+  }
 }
 
 /**
@@ -33,17 +48,39 @@ export function createApiClient() {
 export function attachInterceptors(instance) {
   instance.interceptors.response.use(
     (response) => response,
-    (error) => {
-      const normalised = {
-        message:
-          error.response?.data?.detail ||
-          error.response?.data?.message ||
-          (error.code === 'ECONNABORTED' ? 'Request timed out' : null) ||
-          error.message ||
-          'Unknown network error',
-        status: error.response?.status ?? null,
+    async (error) => {
+      const cfg = error.config || {}
+      const hasResponse = Boolean(error.response)
+
+      // Auto-failover only for transport-level failures (no HTTP response).
+      if (!hasResponse && cfg.url && error.code !== 'ECONNABORTED' && !cfg.__esp32FailoverTried) {
+        const current = normalizeBaseUrl(cfg.baseURL || instance.defaults.baseURL || getBaseUrl())
+        const fallbacks = getFallbackBaseUrls().filter((base) => base !== current)
+
+        for (const baseURL of fallbacks) {
+          try {
+            const retryResponse = await axios.request({
+              ...cfg,
+              baseURL,
+              __esp32FailoverTried: true,
+              timeout: cfg.timeout ?? instance.defaults.timeout ?? API_TIMEOUT,
+            })
+
+            // Persist a working endpoint so subsequent calls stay stable.
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('iot_base_url', baseURL)
+            }
+            instance.defaults.baseURL = baseURL
+            return retryResponse
+          } catch (retryError) {
+            if (retryError.response) {
+              return Promise.reject(normalizeError(retryError))
+            }
+          }
+        }
       }
-      return Promise.reject(normalised)
+
+      return Promise.reject(normalizeError(error))
     }
   )
   return instance

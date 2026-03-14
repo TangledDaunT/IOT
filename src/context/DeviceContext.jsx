@@ -27,6 +27,12 @@ const buildInitialState = () => ({
         uptime:        null,   // seconds
         firmware:      null,   // semver string
         ip:            null,   // local IP
+        wifi:          null,
+        mqtt:          null,
+        mqttState:     null,
+        phase:         null,
+        airQualityAvg5mReady: false,
+        sensorHealthy: true,
       },
     ])
   ),
@@ -52,6 +58,12 @@ function deviceReducer(state, action) {
             uptime:        action.uptime  ?? prev.uptime,
             firmware:      action.firmware ?? prev.firmware,
             ip:            action.ip      ?? prev.ip,
+            wifi:          action.wifi ?? prev.wifi,
+            mqtt:          action.mqtt ?? prev.mqtt,
+            mqttState:     action.mqttState ?? prev.mqttState,
+            phase:         action.phase ?? prev.phase,
+            airQualityAvg5mReady: action.airQualityAvg5mReady ?? prev.airQualityAvg5mReady,
+            sensorHealthy: action.sensorHealthy ?? prev.sensorHealthy,
           },
         },
       }
@@ -80,6 +92,12 @@ function deviceReducer(state, action) {
             uptime:        d.uptime    ?? updated[d.id].uptime,
             firmware:      d.firmware  ?? updated[d.id].firmware,
             ip:            d.ip        ?? updated[d.id].ip,
+            wifi:          d.wifi      ?? updated[d.id].wifi,
+            mqtt:          d.mqtt      ?? updated[d.id].mqtt,
+            mqttState:     d.mqttState ?? updated[d.id].mqttState,
+            phase:         d.phase     ?? updated[d.id].phase,
+            airQualityAvg5mReady: d.airQualityAvg5mReady ?? updated[d.id].airQualityAvg5mReady,
+            sensorHealthy: d.sensorHealthy ?? updated[d.id].sensorHealthy,
           }
         }
       })

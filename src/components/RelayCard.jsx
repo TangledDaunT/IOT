@@ -15,9 +15,10 @@ function fmtDuration(ms) {
   return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-const RelayCard = React.memo(function RelayCard({ relay, onToggle }) {
+const RelayCard = React.memo(function RelayCard({ relay, onToggle, disabled = false, disabledLabel = '' }) {
   const isOn    = relay.isOn
   const loading = relay.loading
+  const blocked = disabled && !loading
 
   // Track ON-start time and live duration display
   const onSinceRef = useRef(null)
@@ -43,10 +44,10 @@ const RelayCard = React.memo(function RelayCard({ relay, onToggle }) {
   return (
     <button
       type="button"
-      onClick={() => !loading && onToggle(relay.id, relay.isOn)}
+      onClick={() => !loading && !blocked && onToggle(relay.id, relay.isOn)}
       aria-label={`${relay.name} — ${isOn ? 'ON' : 'OFF'}, tap to toggle`}
       aria-pressed={isOn}
-      disabled={loading}
+      disabled={loading || blocked}
       className={[
         'relative w-full h-full min-h-0 rounded-2xl border-2 flex flex-col items-center justify-center gap-2',
         'transition-all duration-300 select-none outline-none',
@@ -54,7 +55,7 @@ const RelayCard = React.memo(function RelayCard({ relay, onToggle }) {
         isOn
           ? 'bg-white/5 border-white/25 shadow-[0_0_18px_2px_rgba(255,255,255,0.12)]'
           : 'bg-surface-800 border-surface-600/50',
-        loading ? 'opacity-60 cursor-wait' : 'cursor-pointer',
+        loading ? 'opacity-60 cursor-wait' : blocked ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer',
       ].join(' ')}
     >
       {/* Icon */}
@@ -85,6 +86,12 @@ const RelayCard = React.memo(function RelayCard({ relay, onToggle }) {
           ].join(' ')}
         >
           {isOn ? '● ON' : '○ OFF'}
+        </span>
+      )}
+
+      {blocked && disabledLabel && (
+        <span className="text-[9px] font-mono text-relay-warn uppercase tracking-wide px-2 text-center">
+          {disabledLabel}
         </span>
       )}
 

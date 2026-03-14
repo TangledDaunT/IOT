@@ -1,10 +1,8 @@
 /**
  * deviceService — REST API for ESP32 device health.
  *
- * Endpoints (backend):
- *   GET  /devices/status          → DeviceHealth[]
- *   GET  /devices/:id/status      → DeviceHealth
- *   POST /devices/:id/ota         → triggers OTA update
+ * Firmware endpoints:
+ *   GET /health
  *
  * In MOCK_MODE, returns synthetic health data with simulated
  * RSSI jitter and an incrementing uptime counter.
@@ -44,9 +42,30 @@ export async function getAllDeviceStatus() {
     await mockDelay()
     return DEVICE_CONFIG.map((cfg, i) => mockDevice(cfg, i))
   }
+
   const client = attachInterceptors(createApiClient())
-  const res = await client.get('/devices/status', { timeout: API_TIMEOUT })
-  return res.data
+  const res = await client.get('/health', { timeout: API_TIMEOUT })
+  const data = res.data ?? {}
+  const cfg = DEVICE_CONFIG[0] ?? { id: 'esp32-01', name: 'ESP32 Node', room: 'Control Room', relays: [1, 2, 3, 4] }
+
+  return [{
+    id: cfg.id,
+    name: cfg.name,
+    room: cfg.room,
+    relays: cfg.relays,
+    online: Boolean(data.status === 'OK' || data.wifi || data.mqtt),
+    lastHeartbeat: Date.now(),
+    rssi: null,
+    uptime: Number(data.uptimeSec ?? 0) || 0,
+    firmware: data.firmware ?? '3.1.0-smoke',
+    ip: data.ip ?? null,
+    wifi: Boolean(data.wifi),
+    mqtt: Boolean(data.mqtt),
+    mqttState: Number(data.mqttState ?? 0) || 0,
+    phase: String(data.phase ?? 'normal_operation'),
+    airQualityAvg5mReady: Boolean(data.airQualityAvg5mReady ?? false),
+    sensorHealthy: Boolean(data.sensorHealthy ?? true),
+  }]
 }
 
 /**
@@ -61,9 +80,12 @@ export async function getDeviceStatus(id) {
     if (!cfg) throw new Error(`Unknown device: ${id}`)
     return mockDevice(cfg, DEVICE_CONFIG.indexOf(cfg))
   }
+
   const client = attachInterceptors(createApiClient())
-  const res = await client.get(`/devices/${id}/status`, { timeout: API_TIMEOUT })
-  return res.data
+  const all = await getAllDeviceStatus()
+  const match = all.find((d) => d.id === id)
+  if (match) return match
+  return all[0]
 }
 
 /**
@@ -76,7 +98,9 @@ export async function triggerOTA(id) {
     await mockDelay(600)
     return { queued: true, message: 'OTA update queued (mock)' }
   }
-  const client = attachInterceptors(createApiClient())
-  const res = await client.post(`/devices/${id}/ota`, {}, { timeout: API_TIMEOUT })
-  return res.data
+
+  return {
+    queued: false,
+    message: `OTA endpoint not exposed by firmware for ${id}`,
+  }
 }
