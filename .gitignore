@@ -13,3 +13,4 @@ esp32/data/manifest.webmanifest
 esp32/data/sw.js
 esp32/data/workbox-*.js
 esp32/data/*.pv
+esp32/data/porcupine/
