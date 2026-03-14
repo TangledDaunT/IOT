@@ -11,9 +11,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 
 const SESSION_KEY = 'iot_session'
 
-// SHA-256 via Web Crypto API (no external dep)
+// SHA-256 via Web Crypto API (no external dep).
+// Some mobile HTTP contexts may not expose crypto.subtle, so return null in that case.
 async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
+  if (!globalThis.crypto?.subtle) return null
+  const buf = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
@@ -43,18 +45,29 @@ export default function AuthGate({ children }) {
     setLoading(true)
     setError('')
 
-    const correct = import.meta.env.VITE_APP_PASSWORD ?? 'changeme123'
-    const [enteredHash, correctHash] = await Promise.all([sha256(password), sha256(correct)])
+    try {
+      const correct = import.meta.env.VITE_APP_PASSWORD ?? 'changeme123'
+      const [enteredHash, correctHash] = await Promise.all([sha256(password), sha256(correct)])
 
-    if (enteredHash === correctHash) {
-      sessionStorage.setItem(SESSION_KEY, enteredHash)
-      setAuthed(true)
-    } else {
-      setError('Incorrect password.')
-      setPassword('')
+      // Prefer hash compare when available; gracefully fall back to plain compare on insecure contexts.
+      const isValid = enteredHash && correctHash
+        ? enteredHash === correctHash
+        : password === correct
+
+      if (isValid) {
+        sessionStorage.setItem(SESSION_KEY, enteredHash || 'auth-ok')
+        setAuthed(true)
+      } else {
+        setError('Incorrect password.')
+        setPassword('')
+        setTimeout(() => inputRef.current?.focus(), 50)
+      }
+    } catch {
+      setError('Verification failed. Please try again.')
       setTimeout(() => inputRef.current?.focus(), 50)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [password, loading])
 
   if (checking) return null // brief flash prevention
