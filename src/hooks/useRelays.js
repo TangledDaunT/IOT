@@ -22,6 +22,8 @@ export function useRelays() {
   const { addLog } = useLog()
   const { state: smokeState } = useSmoke()
   const pollRef = useRef(null)
+  const offlineRef = useRef(false)
+  const lastOfflineLogAtRef = useRef(0)
   // Track in-flight relay IDs to prevent double-tap race conditions
   const inflightRef = useRef(new Set())
 
@@ -31,10 +33,22 @@ export function useRelays() {
     try {
       const relays = await getRelayStatus()
       setAllRelays(relays)
+
+      if (offlineRef.current) {
+        offlineRef.current = false
+        addLog('info', 'relay', 'Device connection restored')
+      }
     } catch (err) {
-      toast(err.message || 'Failed to fetch relay status', 'error')
-      setRobotExpression(EXPRESSIONS.ERROR, 'Cannot reach device', 3000)
-      addLog('error', 'relay', `Status fetch failed: ${err.message ?? 'network error'}`)
+      const now = Date.now()
+      const shouldNotify = !offlineRef.current || (now - lastOfflineLogAtRef.current >= 30_000)
+
+      offlineRef.current = true
+      if (shouldNotify) {
+        lastOfflineLogAtRef.current = now
+        toast(err.message || 'Failed to fetch relay status', 'error')
+        setRobotExpression(EXPRESSIONS.ERROR, 'Cannot reach device', 3000)
+        addLog('error', 'relay', `Status fetch failed: ${err.message ?? 'network error'}`)
+      }
     } finally {
       setGlobalLoading(false)
     }

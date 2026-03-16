@@ -11,6 +11,49 @@
  */
 import { getBaseUrl } from '../config'
 
+const VOICE_TIMEOUTS_MS = {
+  transcribe: 3200,
+  parse: 650,
+  respond: 1300,
+  tts: 1600,
+}
+
+function getVoiceApiBaseUrl() {
+  const edgeBase = import.meta.env.VITE_EDGE_API_BASE_URL
+  if (edgeBase && String(edgeBase).trim()) return String(edgeBase).trim().replace(/\/+$/, '')
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
+    return `${proto}//${window.location.hostname}:8088`
+  }
+
+  return getBaseUrl()
+}
+
+async function fetchJsonWithTimeout(url, options, timeoutMs) {
+  const ctrl = new AbortController()
+  const tm = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...options, signal: ctrl.signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  } finally {
+    clearTimeout(tm)
+  }
+}
+
+async function fetchBlobWithTimeout(url, options, timeoutMs) {
+  const ctrl = new AbortController()
+  const tm = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...options, signal: ctrl.signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.blob()
+  } finally {
+    clearTimeout(tm)
+  }
+}
+
 /** Probe mic permission without holding the stream open. */
 export async function requestMicPermission() {
   try {
@@ -80,21 +123,66 @@ export async function startRecording() {
  * Timeout: 15 seconds (Whisper-small on mid-range CPU).
  */
 export async function transcribeAudio(blob) {
-  const url  = `${getBaseUrl()}/api/voice/transcribe`
+  const url  = `${getVoiceApiBaseUrl()}/api/voice/transcribe`
   const form = new FormData()
   form.append('audio', blob, 'recording.webm')
 
-  const ctrl = new AbortController()
-  const tm   = setTimeout(() => ctrl.abort(), 15_000)
+  const data = await fetchJsonWithTimeout(
+    url,
+    { method: 'POST', body: form },
+    VOICE_TIMEOUTS_MS.transcribe,
+  )
+  return (data.transcript || '').trim()
+}
 
-  try {
-    const res = await fetch(url, { method: 'POST', body: form, signal: ctrl.signal })
-    if (!res.ok) throw new Error(`STT HTTP ${res.status}`)
-    const data = await res.json()
-    return (data.transcript || '').trim()
-  } finally {
-    clearTimeout(tm)
-  }
+/** Parse transcript into a normalized intent using edge assistant backend. */
+export async function parseIntentWithBackend(transcript, relayStates = []) {
+  const url = `${getVoiceApiBaseUrl()}/api/voice/parse`
+  return fetchJsonWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript,
+        relay_states: relayStates.map((r) => ({ id: r.id, isOn: r.isOn })),
+      }),
+    },
+    VOICE_TIMEOUTS_MS.parse,
+  )
+}
+
+/** Get conversational text response from edge assistant backend. */
+export async function respondWithBackend(transcript, commandResult = null, relayStates = []) {
+  const url = `${getVoiceApiBaseUrl()}/api/voice/respond`
+  const data = await fetchJsonWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript,
+        command_result: commandResult,
+        relay_states: relayStates.map((r) => ({ id: r.id, isOn: r.isOn })),
+      }),
+    },
+    VOICE_TIMEOUTS_MS.respond,
+  )
+  return (data.reply || '').trim()
+}
+
+/** Synthesize audio with edge TTS backend and return Blob for browser playback. */
+export async function synthesizeTtsWithBackend(text) {
+  const url = `${getVoiceApiBaseUrl()}/api/voice/tts`
+  return fetchBlobWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    },
+    VOICE_TIMEOUTS_MS.tts,
+  )
 }
 
 /** Mock STT — simulates realistic latency without a real backend. */

@@ -81,7 +81,6 @@ export async function getDeviceStatus(id) {
     return mockDevice(cfg, DEVICE_CONFIG.indexOf(cfg))
   }
 
-  const client = attachInterceptors(createApiClient())
   const all = await getAllDeviceStatus()
   const match = all.find((d) => d.id === id)
   if (match) return match

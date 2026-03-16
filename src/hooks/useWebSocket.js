@@ -31,6 +31,8 @@ export function useWebSocket() {
   const { toast } = useToast()
   const pollRef   = useRef(null)
   const mountedRef = useRef(false)
+  const lastWsStatusRef = useRef(null)
+  const lastWsLogAtRef = useRef(0)
 
   useEffect(() => {
     if (mountedRef.current) return   // strict-mode double-invoke guard
@@ -65,11 +67,20 @@ export function useWebSocket() {
 
     const onStatus = ({ connected }) => {
       setWsConnected(connected)
-      addLog(
-        connected ? 'info' : 'warn',
-        'ws',
-        connected ? 'WebSocket connected' : 'WebSocket disconnected'
-      )
+
+      const now = Date.now()
+      const changed = lastWsStatusRef.current !== connected
+      const shouldLog = changed || (now - lastWsLogAtRef.current >= 30_000)
+
+      if (shouldLog) {
+        lastWsStatusRef.current = connected
+        lastWsLogAtRef.current = now
+        addLog(
+          connected ? 'info' : 'warn',
+          'ws',
+          connected ? 'WebSocket connected' : 'WebSocket disconnected'
+        )
+      }
     }
 
     const onSmokeTelemetry = (payload) => {

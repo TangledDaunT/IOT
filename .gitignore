@@ -4,6 +4,10 @@ dist
 .env.local
 .env.production
 *.ppn
+edge_assistant/.env
+edge_assistant/.venv/
+edge_assistant/__pycache__/
+edge_assistant/**/*.pyc
 
 # Generated ESP32 web build artifacts (can contain bundled client secrets)
 esp32/data/assets/

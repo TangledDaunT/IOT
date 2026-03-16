@@ -45,7 +45,7 @@ export default defineConfig({
       },
       workbox: {
         // Cache app shell + static assets
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
         runtimeCaching: [
           {
             // Do NOT cache API calls — relay state must always be live

@@ -15,7 +15,15 @@ import { useRelayContext } from '../context/RelayContext'
 import { useRobot, EXPRESSIONS } from '../context/RobotContext'
 import { useToast } from '../context/ToastContext'
 import { toggleRelay } from '../services/relayService'
-import { startRecording, requestMicPermission, mockTranscribe } from '../services/voiceService'
+import {
+  startRecording,
+  requestMicPermission,
+  mockTranscribe,
+  transcribeAudio,
+  parseIntentWithBackend,
+  respondWithBackend,
+  synthesizeTtsWithBackend,
+} from '../services/voiceService'
 import { parseWithGroq, isGroqConfigured, transcribeWithGroq, streamVoiceResponse } from '../services/groqService'
 import { RELAY_CONFIG, MOCK_MODE } from '../config'
 
@@ -85,17 +93,22 @@ function parseIntent(text) {
 }
 
 // ─── TTS helper ────────────────────────────────────────────────────────────
-function speak(text, enabled) {
-  if (!enabled) return
+
+async function speakViaBackend(text, enabled) {
+  if (!enabled || !text) return
+  const blob = await synthesizeTtsWithBackend(text)
+  const url = URL.createObjectURL(blob)
+  const audio = new Audio(url)
+  audio.onended = () => URL.revokeObjectURL(url)
+  await audio.play()
+}
+
+async function safeSpeakViaBackend(text, enabled) {
   try {
-    const synth = window.speechSynthesis
-    synth.cancel()
-    const u = new SpeechSynthesisUtterance(text)
-    u.rate   = 1.05
-    u.pitch  = 1.0
-    u.volume = 0.85
-    synth.speak(u)
-  } catch { /* not available on this browser */ }
+    await speakViaBackend(text, enabled)
+  } catch {
+    // Intentionally silent: failures should not block command state transitions.
+  }
 }
 
 // ─── Test commands for mock STT mode ──────────────────────────────────────
@@ -110,6 +123,8 @@ export const MOCK_STT_COMMANDS = [
   'Status',
 ]
 
+const MAX_RECORDING_MS = 3500
+
 // ─── Main hook ──────────────────────────────────────────────────────────────
 export function useVoiceCommand() {
   const voice              = useVoice()
@@ -118,6 +133,8 @@ export function useVoiceCommand() {
   const { toast }          = useToast()
   const stopRef            = useRef(null)   // () => Promise<Blob>
   const timerRef           = useRef(null)   // auto-stop timer
+
+  const isOfflineError = (msg = '') => /network|offline|cannot reach|failed to fetch|econn|timeout/i.test(String(msg))
 
   // ── Execute a successfully parsed command ─────────────────────────────
   const executeCommand = useCallback(async (command, transcript) => {
@@ -135,7 +152,7 @@ export function useVoiceCommand() {
 
         const msg = `Relay ${relay.id} ${result.isOn ? 'ON' : 'OFF'}`
         voice.setResult(msg)
-        speak(msg, voice.settings.ttsEnabled)
+        await speakViaBackend(msg, voice.settings.ttsEnabled)
         setRobotExpression(EXPRESSIONS.SUCCESS, msg, 2500)
         toast(msg, 'success')
         voice.addHistory({ transcript, parsed: command, result: msg, ts: Date.now() })
@@ -149,7 +166,7 @@ export function useVoiceCommand() {
         voice.setLatency({ execMs: Date.now() - execStart })
         const msg = 'All relays OFF'
         voice.setResult(msg)
-        speak(msg, voice.settings.ttsEnabled)
+        await speakViaBackend(msg, voice.settings.ttsEnabled)
         setRobotExpression(EXPRESSIONS.SUCCESS, msg, 2500)
         toast(msg, 'success')
         voice.addHistory({ transcript, parsed: command, result: msg, ts: Date.now() })
@@ -162,14 +179,25 @@ export function useVoiceCommand() {
           ? 'All systems offline. All relays are off.'
           : `${onRelays.length} relay${onRelays.length > 1 ? 's' : ''} active: ${onRelays.join(', ')}.`
         voice.setResult(msg)
-        speak(msg, voice.settings.ttsEnabled)
+        await speakViaBackend(msg, voice.settings.ttsEnabled)
         setRobotExpression(EXPRESSIONS.HAPPY, 'Status OK', 2500)
       }
 
       setTimeout(() => voice.setState(VOICE_STATES.IDLE), 1600)
     } catch (e) {
-      voice.setError(e.message || 'Execution failed')
-      speak('Command failed', voice.settings.ttsEnabled)
+      const message = e?.message || 'Execution failed'
+      if (isOfflineError(message)) {
+        const offlineMsg = 'Command understood, but device is offline right now.'
+        voice.setResult(offlineMsg)
+        await speakViaBackend(offlineMsg, voice.settings.ttsEnabled)
+        setRobotExpression(EXPRESSIONS.ERROR, 'Device offline', 3000)
+        toast(offlineMsg, 'warn')
+        setTimeout(() => voice.setState(VOICE_STATES.IDLE), 2200)
+        return
+      }
+
+      voice.setError(message)
+      await safeSpeakViaBackend('Command failed', voice.settings.ttsEnabled)
       setRobotExpression(EXPRESSIONS.ERROR, 'Failed!', 3000)
       setTimeout(() => voice.setState(VOICE_STATES.IDLE), 3000)
     }
@@ -177,24 +205,42 @@ export function useVoiceCommand() {
 
   // ── Parse transcript and run intent ──────────────────────────────────
   const processTranscript = useCallback(async (transcript) => {
-    voice.setTranscript(transcript)
+    const cleanedTranscript = String(transcript || '').trim()
+    if (!cleanedTranscript) {
+      voice.setError('No speech detected — try speaking closer to the mic')
+      setRobotExpression(EXPRESSIONS.ERROR, 'No speech', 2200)
+      setTimeout(() => voice.setState(VOICE_STATES.IDLE), 2200)
+      return
+    }
+
+    voice.setTranscript(cleanedTranscript)
     const parseStart = Date.now()
 
-    let command = null
+    let command = parseIntent(cleanedTranscript)
+    const relayStates = Object.values(relayCtxState.relays).map((r) => ({ id: r.id, isOn: r.isOn }))
+
+    // Local parser handles common relay commands instantly.
+    if (!command) {
+      try {
+        command = await parseIntentWithBackend(cleanedTranscript, relayStates)
+      } catch {
+        // backend unavailable or not configured; fall through to existing paths
+      }
+    }
 
     // Try Groq NLP first if configured (more flexible natural language understanding)
-    if (isGroqConfigured()) {
+    if (!command && isGroqConfigured()) {
       try {
-        const relayStates = Object.values(relayCtxState.relays).map((r) => ({ id: r.id, isOn: r.isOn }))
-        command = await parseWithGroq(transcript, relayStates)
+        command = await parseWithGroq(cleanedTranscript, relayStates)
       } catch {
         // Groq failed — will fall through to rule-based
       }
     }
 
-    // Fallback to rule-based parser
-    if (!command) {
-      command = parseIntent(transcript)
+    // If AI parser returned unknown, give local parser one more chance for relay aliases.
+    if (command?.action === 'unknown') {
+      const localCommand = parseIntent(cleanedTranscript)
+      if (localCommand) command = localCommand
     }
 
     voice.setLatency({ parseMs: Date.now() - parseStart })
@@ -206,18 +252,24 @@ export function useVoiceCommand() {
 
       let fullResponse = ''
       try {
-        const relayStates = Object.values(relayCtxState.relays).map((r) => ({ id: r.id, isOn: r.isOn }))
-        for await (const delta of streamVoiceResponse(transcript, null, relayStates)) {
-          fullResponse += delta
+        fullResponse = await respondWithBackend(cleanedTranscript, null, relayStates)
+        if (fullResponse) {
           voice.setResult(fullResponse)
         }
       } catch {
-        fullResponse = 'Hmm, not sure about that one!'
-        voice.setResult(fullResponse)
+        try {
+          for await (const delta of streamVoiceResponse(cleanedTranscript, null, relayStates)) {
+            fullResponse += delta
+            voice.setResult(fullResponse)
+          }
+        } catch {
+          fullResponse = 'Voice backend is busy right now. Please try that again.'
+          voice.setResult(fullResponse)
+        }
       }
 
       if (fullResponse) {
-        speak(fullResponse, voice.settings.ttsEnabled)
+        await speakViaBackend(fullResponse, voice.settings.ttsEnabled)
         setRobotExpression(EXPRESSIONS.HAPPY, fullResponse.slice(0, 40), 4000)
       }
       const resetDelay = Math.min(3500 + fullResponse.length * 30, 8000)
@@ -225,7 +277,7 @@ export function useVoiceCommand() {
       return
     }
 
-    await executeCommand(command, transcript)
+    await executeCommand(command, cleanedTranscript)
   }, [voice, executeCommand, relayCtxState, setRobotExpression])
 
   // ── Start recording (real mic or mock simulation) ─────────────────────
@@ -238,7 +290,7 @@ export function useVoiceCommand() {
       voice.setMicPermission(perm)
       if (perm === 'denied') {
         voice.setError('Microphone permission denied — grant in browser settings')
-        speak('Microphone access denied', voice.settings.ttsEnabled)
+        await safeSpeakViaBackend('Microphone access denied', voice.settings.ttsEnabled)
         setRobotExpression(EXPRESSIONS.ERROR, 'No mic!', 3000)
         setTimeout(() => voice.setState(VOICE_STATES.IDLE), 3000)
         return
@@ -271,8 +323,8 @@ export function useVoiceCommand() {
     try {
       const stop = await startRecording()
       stopRef.current = stop
-      // Safety: auto-stop after 8s to protect J6 CPU and bandwidth
-      timerRef.current = setTimeout(() => stopVoice(), 8000)
+      // Aggressive turn cap to keep end-to-end reply inside 5s budget.
+      timerRef.current = setTimeout(() => stopVoice(), MAX_RECORDING_MS)
     } catch {
       voice.setError('Could not open microphone')
       voice.setMicPermission('denied')
@@ -294,13 +346,31 @@ export function useVoiceCommand() {
     try {
       const blob       = await stopRef.current()
       stopRef.current  = null
-      const transcript = await transcribeWithGroq(blob)
+      let transcript = ''
+      try {
+        transcript = await transcribeAudio(blob)
+      } catch {
+        // Fallback keeps old behavior until edge backend is always-on.
+        transcript = await transcribeWithGroq(blob)
+      }
+
+      if (!String(transcript || '').trim()) {
+        throw new Error('No speech detected')
+      }
+
       voice.setLatency({ sttMs: Date.now() - sttStart })
       await processTranscript(transcript)
     } catch (e) {
       const isTimeout = e.message?.includes('abort') || e.name === 'AbortError'
-      voice.setError(isTimeout ? 'STT request timed out' : 'Transcription failed')
-      speak('Could not process audio', voice.settings.ttsEnabled)
+      const isNoSpeech = /no speech/i.test(String(e?.message || ''))
+      voice.setError(
+        isNoSpeech
+          ? 'No speech detected — try speaking louder or closer to the mic'
+          : isTimeout
+            ? 'STT request timed out'
+            : 'Transcription failed'
+      )
+      await safeSpeakViaBackend('Could not process audio', voice.settings.ttsEnabled)
       setRobotExpression(EXPRESSIONS.ERROR, 'Audio error', 3000)
       setTimeout(() => voice.setState(VOICE_STATES.IDLE), 3000)
     }
