@@ -11,6 +11,7 @@ import { MOCK_MODE, RELAY_CONFIG } from '../config'
 import { useVoiceCommand, MOCK_STT_COMMANDS } from '../hooks/useVoiceCommand'
 import { requestMicPermission } from '../services/voiceService'
 import { useSmoke } from '../context/SmokeContext'
+import { ensureStepUpMfa, getApiToken, setApiToken } from '../services/securityService'
 
 const LS_KEY = 'iot_base_url'
 
@@ -20,6 +21,7 @@ export default function Settings() {
   const { settings: voiceSettings, setSettings: setVoiceSettings, micPermission, setMicPermission, handleMicTap } = useVoiceCommand()
 
   const [ip, setIp]           = useState(() => localStorage.getItem(LS_KEY) || '')
+  const [apiToken, setApiTokenState] = useState(() => getApiToken())
   const [saved, setSaved]     = useState(false)
   const [testing, setTesting] = useState(false)
   const [pingResult, setPingResult] = useState(null)
@@ -32,19 +34,35 @@ export default function Settings() {
 
   const handleSave = () => {
     const trimmed = ip.trim()
+    const token = apiToken.trim()
     if (trimmed) {
       // Must start with http:// or https://
       if (!/^https?:\/\//.test(trimmed)) {
         toast('URL must start with http:// or https://', 'warn')
         return
       }
-      // Reject JavaScript injection attempts
-      if (/javascript:/i.test(trimmed) || /data:/i.test(trimmed)) {
+      // Reject unsafe schemes and malformed URLs
+      if (/^(javascript|data|file|blob):/i.test(trimmed)) {
+        toast('Invalid URL format', 'error')
+        return
+      }
+      try {
+        const parsed = new URL(trimmed)
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          toast('Only http and https URLs are allowed', 'error')
+          return
+        }
+      } catch {
         toast('Invalid URL format', 'error')
         return
       }
     }
+    if (!token) {
+      toast('API token is required for secured control endpoints', 'warn')
+      return
+    }
     localStorage.setItem(LS_KEY, trimmed)
+    setApiToken(token)
     setSaved(true)
     setPingResult(null)
     toast('Backend URL saved', 'success')
@@ -55,6 +73,8 @@ export default function Settings() {
   const handleClear = () => {
     localStorage.removeItem(LS_KEY)
     setIp('')
+    setApiTokenState('')
+    setApiToken('')
     setPingResult(null)
     toast('URL cleared', 'info')
     setRobotExpression(EXPRESSIONS.HAPPY, 'Cleared!', 2000)
@@ -84,6 +104,7 @@ export default function Settings() {
 
   const handlePolicyChange = async (partial) => {
     try {
+      await ensureStepUpMfa('smoke policy update')
       await updatePolicy(partial)
       toast('Smoke automation policy updated', 'success')
     } catch (err) {
@@ -106,6 +127,13 @@ export default function Settings() {
             placeholder="http://192.168.1.100:8000"
             value={ip}
             onChange={(e) => { setIp(e.target.value); setSaved(false) }}
+            className="w-full bg-surface-700 text-white border border-surface-600 rounded-xl px-3 py-2.5 text-sm min-h-[44px] focus:outline-none focus:border-accent transition-colors placeholder:text-slate-600 font-mono"
+          />
+          <input
+            type="password"
+            placeholder="API token (Bearer)"
+            value={apiToken}
+            onChange={(e) => { setApiTokenState(e.target.value); setSaved(false) }}
             className="w-full bg-surface-700 text-white border border-surface-600 rounded-xl px-3 py-2.5 text-sm min-h-[44px] focus:outline-none focus:border-accent transition-colors placeholder:text-slate-600 font-mono"
           />
           {pingResult && (

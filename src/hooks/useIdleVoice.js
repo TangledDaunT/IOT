@@ -5,23 +5,23 @@
  *   1. Continuous wake word detection ("hey buddy")
  *   2. Live transcription with interim results while user speaks
  *
- * After transcription, Groq LLM parses the command, executes relay actions,
- * and streams back a natural language reply. Browser TTS speaks the reply.
+ * After transcription, edge assistant parses the command, executes relay actions,
+ * and returns a natural language reply. Browser TTS speaks the reply.
  *
  * State machine:
  *   IDLE → (say "hey buddy") → LISTENING → PROCESSING → RESPONDING → IDLE
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { parseWithGroq, isGroqConfigured, streamVoiceResponse } from '../services/groqService'
 import { toggleRelay } from '../services/relayService'
+import { parseIntentWithBackend, respondWithBackend } from '../services/voiceService'
 import { RELAY_CONFIG } from '../config'
 
 // ── Voice phases ────────────────────────────────────────────────────────────
 export const IDLE_VOICE_PHASE = {
   IDLE:       'idle',       // Wake word detector running silently
   LISTENING:  'listening',  // Actively recording command, showing live text
-  PROCESSING: 'processing', // Sending to Groq (parse intent + relay control)
-  RESPONDING: 'responding', // Streaming LLM reply back to user
+  PROCESSING: 'processing', // Sending to backend parser (intent + relay control)
+  RESPONDING: 'responding', // Rendering backend reply text
 }
 
 // ── SpeechRecognition API compat (Chrome / Safari) ──────────────────────────
@@ -87,7 +87,7 @@ export function useIdleVoice({ enabled = true, relayStates = [] } = {}) {
     }, delay)
   }, [])
 
-  // ── Process command: parse → execute relay → stream reply ───────────────
+  // ── Process command: parse → execute relay → reply ───────────────
   const processCommand = useCallback(async (text) => {
     if (!mountedRef.current) return
     setTranscript(text)
@@ -98,48 +98,43 @@ export function useIdleVoice({ enabled = true, relayStates = [] } = {}) {
 
     // Parse intent and execute relay action
     try {
-      if (isGroqConfigured()) {
-        const intent = await parseWithGroq(text, relayStatesRef.current)
+      const intent = await parseIntentWithBackend(text, relayStatesRef.current)
 
-        if (intent?.action === 'relay_control') {
-          const relay = RELAY_CONFIG.find((r) => r.id === intent.relay_id)
-          if (relay) {
-            try {
-              const result = await toggleRelay(relay.id, intent.state === 'on')
-              commandResult = `${relay.name} turned ${result.isOn ? 'ON' : 'OFF'}`
-            } catch {
-              commandResult = `Could not reach ${relay.name} — ESP32 may be offline`
-            }
-          }
-        } else if (intent?.action === 'all_off') {
+      if (intent?.action === 'relay_control') {
+        const relay = RELAY_CONFIG.find((r) => r.id === intent.relay_id)
+        if (relay) {
           try {
-            await Promise.all(RELAY_CONFIG.map((r) => toggleRelay(r.id, false)))
-            commandResult = 'All relays turned OFF'
+            const result = await toggleRelay(relay.id, intent.state === 'on')
+            commandResult = `${relay.name} turned ${result.isOn ? 'ON' : 'OFF'}`
           } catch {
-            commandResult = 'Could not reach relays — ESP32 may be offline'
+            commandResult = `Could not reach ${relay.name} — ESP32 may be offline`
           }
-        } else if (intent?.action === 'status') {
-          const onCount = (relayStatesRef.current || []).filter((r) => r.isOn).length
-          commandResult = onCount === 0
-            ? 'All systems offline'
-            : `${onCount} relay${onCount > 1 ? 's' : ''} currently active`
         }
+      } else if (intent?.action === 'all_off') {
+        try {
+          await Promise.all(RELAY_CONFIG.map((r) => toggleRelay(r.id, false)))
+          commandResult = 'All relays turned OFF'
+        } catch {
+          commandResult = 'Could not reach relays — ESP32 may be offline'
+        }
+      } else if (intent?.action === 'status') {
+        const onCount = (relayStatesRef.current || []).filter((r) => r.isOn).length
+        commandResult = onCount === 0
+          ? 'All systems offline'
+          : `${onCount} relay${onCount > 1 ? 's' : ''} currently active`
       }
     } catch { /* ignore parse errors — will still stream a friendly reply */ }
 
     if (!mountedRef.current) return
 
-    // Stream conversational reply
+    // Fetch conversational reply
     setPhase(IDLE_VOICE_PHASE.RESPONDING)
     setResponseText('')
     let fullResponse = ''
 
     try {
-      for await (const delta of streamVoiceResponse(text, commandResult, relayStatesRef.current)) {
-        if (!mountedRef.current) break
-        fullResponse += delta
-        setResponseText(fullResponse)
-      }
+      fullResponse = await respondWithBackend(text, commandResult, relayStatesRef.current)
+      if (mountedRef.current) setResponseText(fullResponse)
     } catch {
       fullResponse = commandResult || 'Got it!'
       if (mountedRef.current) setResponseText(fullResponse)

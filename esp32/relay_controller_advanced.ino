@@ -44,6 +44,8 @@
 const char* ssid       = "YOUR_WIFI_NAME";
 const char* password   = "YOUR_WIFI_PASSWORD";
 const char* hostname   = "esp32";  // Access via http://esp32.local
+const char* API_TOKEN  = "replace_with_strong_random_token";
+const char* CORS_ALLOWED_ORIGIN = "http://localhost:5173";
 
 // ─────────────────────────────────────────────────────────────
 // GPIO PIN MAPPING
@@ -382,9 +384,35 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 // HTTP HANDLERS
 // ─────────────────────────────────────────────────────────────
 void addCorsHeaders(AsyncWebServerResponse *response) {
-  response->addHeader("Access-Control-Allow-Origin", "*");
+  response->addHeader("Access-Control-Allow-Origin", CORS_ALLOWED_ORIGIN);
   response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+  response->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-IOT-Token, X-IOT-MFA-Token");
+}
+
+bool isAuthorized(AsyncWebServerRequest *request) {
+  String token = "";
+
+  if (request->hasHeader("Authorization")) {
+    String auth = request->header("Authorization");
+    if (auth.startsWith("Bearer ")) {
+      token = auth.substring(7);
+      token.trim();
+    }
+  }
+
+  if (token.length() == 0 && request->hasHeader("X-IOT-Token")) {
+    token = request->header("X-IOT-Token");
+    token.trim();
+  }
+
+  if (token.length() == 0 || token != String(API_TOKEN)) {
+    AsyncWebServerResponse *response = request->beginResponse(401, "application/json", "{\"detail\":\"Unauthorized\"}");
+    addCorsHeaders(response);
+    request->send(response);
+    return false;
+  }
+
+  return true;
 }
 
 void handleStatus(AsyncWebServerRequest *request) {
@@ -406,6 +434,8 @@ void handleStatus(AsyncWebServerRequest *request) {
 }
 
 void handleToggle(AsyncWebServerRequest *request) {
+  if (!isAuthorized(request)) return;
+
   if (!request->hasParam("id") || !request->hasParam("state")) {
     request->send(400, "text/plain", "Missing parameters");
     return;
@@ -470,6 +500,8 @@ void handleSmokeStatus(AsyncWebServerRequest *request) {
 }
 
 void handleSmokePolicy(AsyncWebServerRequest *request) {
+  if (!isAuthorized(request)) return;
+
   if (!request->hasParam("plain", true)) {
     request->send(400, "text/plain", "Missing JSON body");
     return;

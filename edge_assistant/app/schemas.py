@@ -17,7 +17,7 @@ class TranscribeResponse(BaseModel):
 
 
 class ParseRequest(BaseModel):
-    transcript: str = Field(min_length=1)
+    transcript: str = Field(min_length=1, max_length=400)
     relay_states: list[RelayState] = Field(default_factory=list)
 
 
@@ -29,8 +29,8 @@ class IntentResponse(BaseModel):
 
 
 class RespondRequest(BaseModel):
-    transcript: str = Field(min_length=1)
-    command_result: str | None = None
+    transcript: str = Field(min_length=1, max_length=400)
+    command_result: str | None = Field(default=None, max_length=400)
     relay_states: list[RelayState] = Field(default_factory=list)
 
 
@@ -43,7 +43,7 @@ class TtsRequest(BaseModel):
 
 
 class OrchestratorEvent(BaseModel):
-    event_type: str
+    event_type: str = Field(min_length=1, max_length=64)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

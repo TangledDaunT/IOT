@@ -24,7 +24,6 @@ import {
   respondWithBackend,
   synthesizeTtsWithBackend,
 } from '../services/voiceService'
-import { parseWithGroq, isGroqConfigured, transcribeWithGroq, streamVoiceResponse } from '../services/groqService'
 import { RELAY_CONFIG, MOCK_MODE } from '../config'
 
 // ─── Relay name → id alias map ─────────────────────────────────────────────
@@ -228,15 +227,6 @@ export function useVoiceCommand() {
       }
     }
 
-    // Try Groq NLP first if configured (more flexible natural language understanding)
-    if (!command && isGroqConfigured()) {
-      try {
-        command = await parseWithGroq(cleanedTranscript, relayStates)
-      } catch {
-        // Groq failed — will fall through to rule-based
-      }
-    }
-
     // If AI parser returned unknown, give local parser one more chance for relay aliases.
     if (command?.action === 'unknown') {
       const localCommand = parseIntent(cleanedTranscript)
@@ -257,15 +247,8 @@ export function useVoiceCommand() {
           voice.setResult(fullResponse)
         }
       } catch {
-        try {
-          for await (const delta of streamVoiceResponse(cleanedTranscript, null, relayStates)) {
-            fullResponse += delta
-            voice.setResult(fullResponse)
-          }
-        } catch {
-          fullResponse = 'Voice backend is busy right now. Please try that again.'
-          voice.setResult(fullResponse)
-        }
+        fullResponse = 'Voice backend is busy right now. Please try that again.'
+        voice.setResult(fullResponse)
       }
 
       if (fullResponse) {
@@ -346,13 +329,7 @@ export function useVoiceCommand() {
     try {
       const blob       = await stopRef.current()
       stopRef.current  = null
-      let transcript = ''
-      try {
-        transcript = await transcribeAudio(blob)
-      } catch {
-        // Fallback keeps old behavior until edge backend is always-on.
-        transcript = await transcribeWithGroq(blob)
-      }
+      const transcript = await transcribeAudio(blob)
 
       if (!String(transcript || '').trim()) {
         throw new Error('No speech detected')

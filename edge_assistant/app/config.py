@@ -21,7 +21,15 @@ class Settings(BaseSettings):
 
     host: str = "0.0.0.0"
     port: int = 8088
-    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+
+    # Security controls
+    security_api_token: str | None = None
+    security_mfa_code: str | None = None
+    security_mfa_challenge_ttl_seconds: int = 180
+    security_mfa_token_ttl_seconds: int = 600
+    security_max_audio_bytes: int = 5 * 1024 * 1024
+    security_max_image_bytes: int = 1 * 1024 * 1024
 
     # Existing IoT backend (ESP32/API)
     iot_base_url: str = "http://192.168.1.10"

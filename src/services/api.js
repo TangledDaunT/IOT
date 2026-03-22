@@ -7,6 +7,7 @@
  */
 import axios from 'axios'
 import { getBaseUrl, getFallbackBaseUrls, normalizeBaseUrl, API_TIMEOUT } from '../config'
+import { getAuthHeaders } from './securityService'
 
 /**
  * Creates a fresh axios instance with the current base URL.
@@ -17,9 +18,7 @@ export function createApiClient() {
   return axios.create({
     baseURL: normalizeBaseUrl(getBaseUrl()),
     timeout: API_TIMEOUT,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
   })
 }
 
@@ -68,7 +67,9 @@ export function attachInterceptors(instance) {
 
             // Persist a working endpoint so subsequent calls stay stable.
             if (typeof localStorage !== 'undefined') {
-              localStorage.setItem('iot_base_url', baseURL)
+              if (/^https?:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(baseURL)) {
+                localStorage.setItem('iot_base_url', baseURL)
+              }
             }
             instance.defaults.baseURL = baseURL
             return retryResponse

@@ -18,8 +18,9 @@ from app.schemas import (
 )
 from app.services.groq_client import GroqClient
 from app.services.stt import WhisperSttService
+from app.security import rate_limit, require_api_token
 
-router = APIRouter(prefix="/api/voice", tags=["voice"])
+router = APIRouter(prefix="/api/voice", tags=["voice"], dependencies=[Depends(require_api_token)])
 _stt_service: WhisperSttService | None = None
 
 
@@ -34,10 +35,17 @@ def get_stt_service(settings: Settings = Depends(get_settings)) -> WhisperSttSer
 async def transcribe_audio(
     audio: UploadFile = File(...),
     stt: WhisperSttService = Depends(get_stt_service),
+    settings: Settings = Depends(get_settings),
+    _: None = Depends(rate_limit(20, 60)),
 ) -> TranscribeResponse:
+    if not audio.content_type or not audio.content_type.startswith("audio/"):
+        raise HTTPException(status_code=415, detail="Unsupported media type")
+
     data = await audio.read()
     if not data:
         raise HTTPException(status_code=400, detail="Audio payload is empty")
+    if len(data) > settings.security_max_audio_bytes:
+        raise HTTPException(status_code=413, detail="Audio payload too large")
 
     suffix = f".{audio.filename.rsplit('.', 1)[-1]}" if audio.filename and "." in audio.filename else ".webm"
 
@@ -49,6 +57,7 @@ async def transcribe_audio(
 async def parse_intent(
     req: ParseRequest,
     settings: Settings = Depends(get_settings),
+    _: None = Depends(rate_limit(40, 60)),
 ) -> IntentResponse:
     try:
         client = GroqClient(settings)
@@ -63,6 +72,7 @@ async def parse_intent(
 async def respond_text(
     req: RespondRequest,
     settings: Settings = Depends(get_settings),
+    _: None = Depends(rate_limit(40, 60)),
 ) -> RespondResponse:
     try:
         client = GroqClient(settings)
@@ -81,13 +91,14 @@ async def respond_text(
 async def synthesize_tts(
     req: TtsRequest,
     settings: Settings = Depends(get_settings),
+    _: None = Depends(rate_limit(30, 60)),
 ) -> Response:
     try:
         client = GroqClient(settings)
         audio_bytes, content_type = await client.synthesize_tts(req.text)
         return Response(content=audio_bytes, media_type=content_type)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"TTS synthesis failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="TTS synthesis failed") from exc
 
 
 def _parse_intent_fallback(transcript: str) -> dict:

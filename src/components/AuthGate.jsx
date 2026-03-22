@@ -10,6 +10,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 
 const SESSION_KEY = 'iot_session'
+const SESSION_IDLE_MINUTES = Number(import.meta.env.VITE_APP_SESSION_IDLE_MINUTES || 30)
+const SESSION_IDLE_MS = Math.max(1, SESSION_IDLE_MINUTES) * 60 * 1000
 
 // SHA-256 via Web Crypto API (no external dep).
 // Some mobile HTTP contexts may not expose crypto.subtle, so return null in that case.
@@ -30,9 +32,56 @@ export default function AuthGate({ children }) {
   // On mount, check if this session already authenticated
   useEffect(() => {
     const saved = sessionStorage.getItem(SESSION_KEY)
-    if (saved) setAuthed(true)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        const lastActivity = Number(parsed?.lastActivity || 0)
+        if (lastActivity && Date.now() - lastActivity < SESSION_IDLE_MS) {
+          setAuthed(true)
+        } else {
+          sessionStorage.removeItem(SESSION_KEY)
+        }
+      } catch {
+        sessionStorage.removeItem(SESSION_KEY)
+      }
+    }
     setChecking(false)
   }, [])
+
+  useEffect(() => {
+    if (!authed) return
+
+    const touch = () => {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ lastActivity: Date.now() }))
+    }
+
+    const onActivity = () => touch()
+    const interval = setInterval(() => {
+      try {
+        const raw = sessionStorage.getItem(SESSION_KEY)
+        const parsed = raw ? JSON.parse(raw) : null
+        const lastActivity = Number(parsed?.lastActivity || 0)
+        if (!lastActivity || Date.now() - lastActivity >= SESSION_IDLE_MS) {
+          sessionStorage.removeItem(SESSION_KEY)
+          setAuthed(false)
+        }
+      } catch {
+        sessionStorage.removeItem(SESSION_KEY)
+        setAuthed(false)
+      }
+    }, 15_000)
+
+    window.addEventListener('click', onActivity)
+    window.addEventListener('keydown', onActivity)
+    window.addEventListener('mousemove', onActivity)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('click', onActivity)
+      window.removeEventListener('keydown', onActivity)
+      window.removeEventListener('mousemove', onActivity)
+    }
+  }, [authed])
 
   // Auto-focus password input
   useEffect(() => {
@@ -46,16 +95,22 @@ export default function AuthGate({ children }) {
     setError('')
 
     try {
-      const correct = import.meta.env.VITE_APP_PASSWORD ?? 'changeme123'
-      const [enteredHash, correctHash] = await Promise.all([sha256(password), sha256(correct)])
+      const correct = String(import.meta.env.VITE_APP_PASSWORD || '').trim()
+      if (!correct) {
+        setError('App password is not configured.')
+        return
+      }
 
-      // Prefer hash compare when available; gracefully fall back to plain compare on insecure contexts.
-      const isValid = enteredHash && correctHash
-        ? enteredHash === correctHash
-        : password === correct
+      const [enteredHash, correctHash] = await Promise.all([sha256(password), sha256(correct)])
+      if (!enteredHash || !correctHash) {
+        setError('Secure password verification is unavailable in this context.')
+        return
+      }
+
+      const isValid = enteredHash === correctHash
 
       if (isValid) {
-        sessionStorage.setItem(SESSION_KEY, enteredHash || 'auth-ok')
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ lastActivity: Date.now() }))
         setAuthed(true)
       } else {
         setError('Incorrect password.')

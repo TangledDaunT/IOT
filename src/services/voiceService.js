@@ -10,6 +10,7 @@
  *   mockTranscribe(text)       → same shape, instant fake delay
  */
 import { getBaseUrl } from '../config'
+import { getAuthHeaders, resolveEdgeApiBaseUrl } from './securityService'
 
 const VOICE_TIMEOUTS_MS = {
   transcribe: 3200,
@@ -19,15 +20,7 @@ const VOICE_TIMEOUTS_MS = {
 }
 
 function getVoiceApiBaseUrl() {
-  const edgeBase = import.meta.env.VITE_EDGE_API_BASE_URL
-  if (edgeBase && String(edgeBase).trim()) return String(edgeBase).trim().replace(/\/+$/, '')
-
-  if (typeof window !== 'undefined' && window.location?.hostname) {
-    const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
-    return `${proto}//${window.location.hostname}:8088`
-  }
-
-  return getBaseUrl()
+  return resolveEdgeApiBaseUrl() || getBaseUrl()
 }
 
 async function fetchJsonWithTimeout(url, options, timeoutMs) {
@@ -129,7 +122,7 @@ export async function transcribeAudio(blob) {
 
   const data = await fetchJsonWithTimeout(
     url,
-    { method: 'POST', body: form },
+    { method: 'POST', body: form, headers: getAuthHeaders() },
     VOICE_TIMEOUTS_MS.transcribe,
   )
   return (data.transcript || '').trim()
@@ -142,7 +135,7 @@ export async function parseIntentWithBackend(transcript, relayStates = []) {
     url,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         transcript,
         relay_states: relayStates.map((r) => ({ id: r.id, isOn: r.isOn })),
@@ -159,7 +152,7 @@ export async function respondWithBackend(transcript, commandResult = null, relay
     url,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         transcript,
         command_result: commandResult,
@@ -178,7 +171,7 @@ export async function synthesizeTtsWithBackend(text) {
     url,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ text }),
     },
     VOICE_TIMEOUTS_MS.tts,

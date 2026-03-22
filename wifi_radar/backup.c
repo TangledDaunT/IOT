@@ -16,11 +16,17 @@
  *   GET  /health
  *   WS   /ws
  *
+ * Browser terminal (Android / any device on same WiFi):
+ *   http://<ESP_IP>/webserial
+ *   - Live serial output streamed in real-time
+ *   - Accepts typed commands (see webSerialCallback below)
+ *
  * Boot behavior:
  *   1) Connect Wi-Fi (best effort with retry in loop).
- *   2) Calibrate clean-air baseline for 2 minutes.
- *   3) Turn relay 2 ON for 1 minute to learn smoke-air profile.
- *   4) Turn relay 2 OFF and enter normal operation.
+ *   2) Start web server + WebSerial terminal.
+ *   3) Calibrate clean-air baseline for 2 minutes.
+ *   4) Turn relay 2 ON for 1 minute to learn smoke-air profile.
+ *   5) Turn relay 2 OFF and enter normal operation.
  *
  * Smoke behavior:
  *   - If smoke is detected, relay 1 is forced OFF for safety hold period.
@@ -43,25 +49,29 @@
 #include <PubSubClient.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <WebSerial.h>   // Browser terminal — install "WebSerial" by ayushsharma82
+
+// ---------------------------
+// Dual-output log macros
+// Every LOG/LOGLN call goes to both USB serial AND the browser terminal.
+// ---------------------------
+#define LOG(x)   do { Serial.print(x);   WebSerial.print(x);   } while (0)
+#define LOGLN(x) do { Serial.println(x); WebSerial.println(x); } while (0)
 
 // ---------------------------
 // Network configuration
 // ---------------------------
-const char *ssid     = "REPLACE_WIFI_SSID";
-const char *password = "REPLACE_WIFI_PASSWORD";
+const char *ssid     = "Sun6_2108";
+const char *password = "11223344";
 const char *hostname = "esp32";
-
-// API security (must match frontend/backend token)
-const char *API_TOKEN = "replace_with_strong_random_token";
-const char *CORS_ALLOWED_ORIGIN = "http://localhost:5173";
 
 // ---------------------------
 // MQTT configuration
 // ---------------------------
 const char *MQTT_BROKER = "ad827adb37cb486d9a521c61763c31eb.s1.eu.hivemq.cloud";
 const int   MQTT_PORT   = 8883;
-const char *MQTT_USER   = "REPLACE_MQTT_USER";
-const char *MQTT_PASS   = "REPLACE_MQTT_PASSWORD";
+const char *MQTT_USER   = "ESP32";
+const char *MQTT_PASS   = "dazhop-Gexbej-1cuvcy";
 const char *MQTT_TOPIC  = "Shreyansh/feeds/room-relay";
 
 // ---------------------------
@@ -114,9 +124,9 @@ struct SmokePolicy {
   FanMode       mode                  = FAN_MODE_AUTO;
   bool          safetyOverrideEnabled = true;
   int           fanRelayId            = RELAY_2_ID;
-  int           smokeThresholdOn      = 0;       // 0 = dynamic threshold
-  int           smokeThresholdOff     = 0;       // reserved
-  int           triggerOffset         = 80;      // baseline + 80 fallback
+  int           smokeThresholdOn      = 0;
+  int           smokeThresholdOff     = 0;
+  int           triggerOffset         = 80;
   unsigned long minSmokeDurationMs    = 300;
   unsigned long debounceMs            = 300;
   unsigned long postSmokeCooldownMs   = 120000UL;
@@ -155,10 +165,6 @@ float         smokeEpisodePeakIntensity = 0.0f;
 String        currentEpisodeId          = "";
 uint32_t      smokeEpisodeSeq           = 0;
 
-// FIX: Fan auto-control state
-// fanAutoOn          - true when the auto-logic turned relay 2 ON (so we know to turn it OFF later)
-// fanManuallyDisabled - set when the user explicitly turns relay 2 OFF via app during a smoke episode;
-//                       cleared when the user turns it back ON, or when the cooldown ends (for next episode)
 bool fanAutoOn           = false;
 bool fanManuallyDisabled = false;
 
@@ -169,7 +175,7 @@ unsigned long lastHeartbeatMs     = 0;
 unsigned long lastMqttReconnectMs = 0;
 unsigned long lastWifiRetryMs     = 0;
 unsigned long lastAvgPublishMs    = 0;
-unsigned long lastValidReadingMs  = 0;  // initialized to millis() in setup()
+unsigned long lastValidReadingMs  = 0;
 
 float  aqWindow[AQ_WINDOW_SAMPLES] = {0.0f};
 size_t aqWindowCount               = 0;
@@ -177,7 +183,6 @@ size_t aqWindowHead                = 0;
 float  aqWindowSum                 = 0.0f;
 float  aq5mLastPublished           = 0.0f;
 
-// FIX: Global buffer for raw JSON body accumulation (POST /smoke/policy)
 String smokePolicyBodyBuffer;
 
 // ---------------------------
@@ -194,6 +199,95 @@ void enforceSmokeLock();
 void updateSmokeDetection();
 bool mqttReconnect();
 void mqttCallback(char *topic, byte *payload, unsigned int length);
+
+// ---------------------------
+// WebSerial command handler
+// Open http://<IP>/webserial in Chrome on Android (same WiFi, no app needed).
+//
+// Available commands (type in the input box and press Send):
+//   status      - sensor readings + all relay states
+//   relays      - relay on/off states
+//   smoke       - smoke detection state + cooldown remaining
+//   clearsmoke  - force-clear smoke lock (emergency override)
+//   baseline    - baseline / threshold values
+//   uptime      - uptime in seconds
+//   help        - list all commands
+// ---------------------------
+void webSerialCallback(uint8_t *data, size_t len) {
+  String cmd = "";
+  cmd.reserve(len + 1);
+  for (size_t i = 0; i < len; i++) {
+    cmd += (char)data[i];
+  }
+  cmd.trim();
+  cmd.toLowerCase();
+
+  if (cmd == "help") {
+    LOGLN("[CMD] Commands: status | relays | smoke | clearsmoke | baseline | uptime | help");
+
+  } else if (cmd == "status") {
+    LOG("[STATUS] Raw=");       LOG(mq2Raw);
+    LOG(" Smoothed=");          LOG(mq2Smoothed);
+    LOG(" Baseline=");          LOG(mq2Baseline);
+    LOG(" Threshold=");         LOGLN(currentThresholdOn());
+    LOG("[STATUS] SmokeActive="); LOG(smokeActive ? "YES" : "NO");
+    LOG(" LockActive=");          LOGLN(smokeLockActive ? "YES" : "NO");
+    for (int i = 0; i < NUM_RELAYS; i++) {
+      LOG("[STATUS] Relay "); LOG(i + 1);
+      LOG(": ");              LOGLN(relayState[i] ? "ON" : "OFF");
+    }
+
+  } else if (cmd == "relays") {
+    for (int i = 0; i < NUM_RELAYS; i++) {
+      LOG("[RELAY] "); LOG(i + 1);
+      LOG(": ");       LOGLN(relayState[i] ? "ON" : "OFF");
+    }
+
+  } else if (cmd == "smoke") {
+    LOG("[SMOKE] Active=");  LOG(smokeActive ? "YES" : "NO");
+    LOG(" Lock=");           LOG(smokeLockActive ? "YES" : "NO");
+    if (smokeLockActive && smokeLockUntil > millis()) {
+      LOG(" CooldownRemaining=");
+      LOG((smokeLockUntil - millis()) / 1000);
+      LOGLN("s");
+    } else {
+      LOGLN("");
+    }
+    LOG("[SMOKE] Episode="); LOG(smokeEpisodeSeq);
+    LOG(" PeakIntensity="); LOGLN(smokeEpisodePeakIntensity);
+
+  } else if (cmd == "clearsmoke") {
+    if (!smokeLockActive) {
+      LOGLN("[CMD] No active smoke lock to clear.");
+    } else {
+      smokeLockActive = false;
+      smokeActive     = false;
+      if (fanAutoOn) {
+        applyRelay(smokePolicy.fanRelayId, false, true);
+        fanAutoOn = false;
+      }
+      fanManuallyDisabled = false;
+      unsigned long nowMs = millis();
+      broadcastSmokeEvent("smoke_cleared", nowMs, true);
+      broadcastSmokeEvent("cigarette_episode_closed", nowMs, true);
+      LOGLN("[CMD] Smoke lock force-cleared via terminal.");
+    }
+
+  } else if (cmd == "baseline") {
+    LOG("[BASELINE] Clean=");    LOG(mq2CleanBaseline);
+    LOG(" Current=");            LOG(mq2Baseline);
+    LOG(" SmokeRef=");           LOG(hasSmokeReference ? mq2SmokeReference : 0);
+    LOG(" Threshold=");          LOGLN(currentThresholdOn());
+
+  } else if (cmd == "uptime") {
+    LOG("[UPTIME] ");
+    LOG((millis() - bootMs) / 1000);
+    LOGLN("s");
+
+  } else {
+    LOG("[CMD] Unknown: '"); LOG(cmd); LOGLN("' — type 'help'");
+  }
+}
 
 // ---------------------------
 // Utility helpers
@@ -238,15 +332,11 @@ const char *estimateAqiBand(float intensity) {
 
 int currentThresholdOn() {
   if (smokePolicy.smokeThresholdOn > 0) return smokePolicy.smokeThresholdOn;
-
   int fallback = (int)mq2Baseline + smokePolicy.triggerOffset;
   if (!hasSmokeReference) return fallback;
-
-  // Use midpoint between clean baseline and smoke reference to reduce false positives.
   if (mq2SmokeReference > (mq2Baseline + 20.0f)) {
     return (int)((mq2Baseline + mq2SmokeReference) * 0.5f);
   }
-
   return fallback;
 }
 
@@ -258,7 +348,6 @@ void pushAqSample(float intensity) {
     aqWindowCount++;
     return;
   }
-
   aqWindowSum           -= aqWindow[aqWindowHead];
   aqWindow[aqWindowHead] = intensity;
   aqWindowSum           += intensity;
@@ -280,13 +369,9 @@ bool isAq5mReady() {
 void applyRelay(int id, bool state, bool broadcast) {
   if (id < 1 || id > NUM_RELAYS) return;
   int idx = id - 1;
-
   relayState[idx] = state;
   digitalWrite(relayPins[idx], state ? LOW : HIGH);  // Active-LOW
-
-  if (broadcast) {
-    broadcastRelayUpdate(id, state);
-  }
+  if (broadcast) broadcastRelayUpdate(id, state);
 }
 
 // ---------------------------
@@ -298,7 +383,6 @@ void broadcastRelayUpdate(int id, bool isOn) {
   JsonObject payload = doc.createNestedObject("payload");
   payload["id"]   = id;
   payload["isOn"] = isOn;
-
   String json;
   serializeJson(doc, json);
   ws.textAll(json);
@@ -312,9 +396,8 @@ void broadcastHeartbeat() {
   payload["online"]   = WiFi.status() == WL_CONNECTED;
   payload["rssi"]     = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -127;
   payload["uptime"]   = (millis() - bootMs) / 1000;
-  payload["firmware"] = "3.1.0-smoke";
+  payload["firmware"] = "3.2.0-smoke";
   payload["ip"]       = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "0.0.0.0";
-
   String json;
   serializeJson(doc, json);
   ws.textAll(json);
@@ -324,16 +407,15 @@ void broadcastSmokeEvent(const char *eventType, unsigned long ts, bool includeDu
   StaticJsonDocument<416> doc;
   doc["type"] = "smoke_event";
   JsonObject payload = doc.createNestedObject("payload");
-  payload["eventType"]   = eventType;
-  payload["eventId"]     = String("evt-") + String(ts) + "-" + eventType;
-  payload["episodeId"]   = currentEpisodeId;
-  payload["deviceId"]    = "esp32-01";
-  payload["startedAt"]   = smokeDetectedAt;
-  payload["endedAt"]     = includeDuration ? ts : 0;
-  payload["durationMs"]  = includeDuration ? (ts - smokeDetectedAt) : 0;
+  payload["eventType"]     = eventType;
+  payload["eventId"]       = String("evt-") + String(ts) + "-" + eventType;
+  payload["episodeId"]     = currentEpisodeId;
+  payload["deviceId"]      = "esp32-01";
+  payload["startedAt"]     = smokeDetectedAt;
+  payload["endedAt"]       = includeDuration ? ts : 0;
+  payload["durationMs"]    = includeDuration ? (ts - smokeDetectedAt) : 0;
   payload["peakIntensity"] = smokeEpisodePeakIntensity;
-  payload["timestamp"]   = ts;
-
+  payload["timestamp"]     = ts;
   String json;
   serializeJson(doc, json);
   ws.textAll(json);
@@ -348,7 +430,6 @@ void broadcastAirQualityAverage(float avg, bool ready) {
   payload["samplesInWindow"]      = aqWindowCount;
   payload["windowMs"]             = AVG_PUBLISH_INTERVAL_MS;
   payload["timestamp"]            = millis();
-
   String json;
   serializeJson(doc, json);
   ws.textAll(json);
@@ -359,41 +440,40 @@ void broadcastSmokeTelemetry() {
   float avg5m     = currentAq5mAverage();
   bool  avgReady  = isAq5mReady();
 
-  // FIX: bumped to 1024 to prevent silent truncation of ~30 fields + nested policy object
   StaticJsonDocument<1024> doc;
   doc["type"] = "smoke_telemetry";
   JsonObject payload = doc.createNestedObject("payload");
-  payload["raw"]                    = mq2Raw;
-  payload["smoothed"]               = mq2Smoothed;
-  payload["baseline"]               = mq2Baseline;
-  payload["cleanBaseline"]          = mq2CleanBaseline;
-  payload["smokeReference"]         = hasSmokeReference ? mq2SmokeReference : 0;
-  payload["smokeReferenceReady"]    = hasSmokeReference;
-  payload["intensity"]              = intensity;
-  payload["aqiBand"]                = estimateAqiBand(intensity);
-  payload["smokeActive"]            = smokeActive;
-  payload["fanAutoActive"]          = smokeLockActive;
-  payload["cooldownRemainingMs"]    = (smokeLockActive && smokeLockUntil > millis())
-                                        ? (smokeLockUntil - millis()) : 0;
-  payload["airQualityAvg5m"]        = avg5m;
-  payload["airQualityAvg5mReady"]   = avgReady;
-  payload["air_quality_avg_5m"]     = avg5m;
+  payload["raw"]                      = mq2Raw;
+  payload["smoothed"]                 = mq2Smoothed;
+  payload["baseline"]                 = mq2Baseline;
+  payload["cleanBaseline"]            = mq2CleanBaseline;
+  payload["smokeReference"]           = hasSmokeReference ? mq2SmokeReference : 0;
+  payload["smokeReferenceReady"]      = hasSmokeReference;
+  payload["intensity"]                = intensity;
+  payload["aqiBand"]                  = estimateAqiBand(intensity);
+  payload["smokeActive"]              = smokeActive;
+  payload["fanAutoActive"]            = smokeLockActive;
+  payload["cooldownRemainingMs"]      = (smokeLockActive && smokeLockUntil > millis())
+                                          ? (smokeLockUntil - millis()) : 0;
+  payload["airQualityAvg5m"]          = avg5m;
+  payload["airQualityAvg5mReady"]     = avgReady;
+  payload["air_quality_avg_5m"]       = avg5m;
   payload["air_quality_avg_5m_ready"] = avgReady;
-  payload["samplesInWindow"]        = aqWindowCount;
-  payload["windowMs"]               = AVG_PUBLISH_INTERVAL_MS;
-  payload["phase"]                  = phaseToString(runtimePhase);
-  payload["sensorHealthy"]          = millis() - lastValidReadingMs < 5000UL;
-  payload["timestamp"]              = millis();
+  payload["samplesInWindow"]          = aqWindowCount;
+  payload["windowMs"]                 = AVG_PUBLISH_INTERVAL_MS;
+  payload["phase"]                    = phaseToString(runtimePhase);
+  payload["sensorHealthy"]            = millis() - lastValidReadingMs < 5000UL;
+  payload["timestamp"]                = millis();
 
   JsonObject policy = payload.createNestedObject("policy");
-  policy["mode"]                 = fanModeToString(smokePolicy.mode);
-  policy["fanRelayId"]           = smokePolicy.fanRelayId;
+  policy["mode"]                  = fanModeToString(smokePolicy.mode);
+  policy["fanRelayId"]            = smokePolicy.fanRelayId;
   policy["safetyOverrideEnabled"] = smokePolicy.safetyOverrideEnabled;
-  policy["smokeThresholdOn"]     = currentThresholdOn();
-  policy["smokeThresholdOff"]    = smokePolicy.smokeThresholdOff;
-  policy["minSmokeDurationMs"]   = smokePolicy.minSmokeDurationMs;
-  policy["debounceMs"]           = smokePolicy.debounceMs;
-  policy["postSmokeCooldownMs"]  = smokePolicy.postSmokeCooldownMs;
+  policy["smokeThresholdOn"]      = currentThresholdOn();
+  policy["smokeThresholdOff"]     = smokePolicy.smokeThresholdOff;
+  policy["minSmokeDurationMs"]    = smokePolicy.minSmokeDurationMs;
+  policy["debounceMs"]            = smokePolicy.debounceMs;
+  policy["postSmokeCooldownMs"]   = smokePolicy.postSmokeCooldownMs;
   policy["timezoneOffsetMinutes"] = smokePolicy.timezoneOffsetMinutes;
 
   String json;
@@ -409,11 +489,8 @@ float sampleAverageForDuration(unsigned long durationMs, const char *label) {
   unsigned long samples = 0;
   unsigned long sum     = 0;
 
-  Serial.print("[SMOKE] ");
-  Serial.print(label);
-  Serial.print(" for ");
-  Serial.print(durationMs / 1000);
-  Serial.println("s...");
+  LOG("[SMOKE] "); LOG(label);
+  LOG(" for "); LOG(durationMs / 1000); LOGLN("s...");
 
   while (millis() - start < durationMs) {
     int v = analogRead(MQ2_PIN);
@@ -430,14 +507,13 @@ float sampleAverageForDuration(unsigned long durationMs, const char *label) {
 }
 
 void runBootCalibrationAndLearning() {
-  runtimePhase      = PHASE_BOOT_CALIBRATING;
-  mq2CleanBaseline  = sampleAverageForDuration(BASELINE_CALIBRATION_MS,
-                        "Calibrating clean-air baseline");
-  mq2Baseline       = mq2CleanBaseline;
-  mq2Smoothed       = mq2Baseline;
+  runtimePhase     = PHASE_BOOT_CALIBRATING;
+  mq2CleanBaseline = sampleAverageForDuration(BASELINE_CALIBRATION_MS,
+                       "Calibrating clean-air baseline");
+  mq2Baseline = mq2CleanBaseline;
+  mq2Smoothed = mq2Baseline;
 
-  Serial.print("[SMOKE] Clean baseline: ");
-  Serial.println(mq2CleanBaseline, 1);
+  LOG("[SMOKE] Clean baseline: "); LOGLN(mq2CleanBaseline);
 
   runtimePhase      = PHASE_BOOT_SMOKE_LEARNING;
   applyRelay(RELAY_2_ID, true, false);
@@ -446,10 +522,8 @@ void runBootCalibrationAndLearning() {
   hasSmokeReference = true;
   applyRelay(RELAY_2_ID, false, false);
 
-  Serial.print("[SMOKE] Smoke reference: ");
-  Serial.println(mq2SmokeReference, 1);
-  Serial.print("[SMOKE] Dynamic threshold: ");
-  Serial.println(currentThresholdOn());
+  LOG("[SMOKE] Smoke reference: ");   LOGLN(mq2SmokeReference);
+  LOG("[SMOKE] Dynamic threshold: "); LOGLN(currentThresholdOn());
 
   runtimePhase = PHASE_NORMAL;
 }
@@ -461,31 +535,26 @@ void enforceSmokeLock() {
     smokeLockActive = false;
     smokeActive     = false;
 
-    // FIX: Turn fan OFF if the auto-logic turned it ON, then reset both fan flags
-    // so the next smoke episode starts fresh.
     if (fanAutoOn) {
       applyRelay(smokePolicy.fanRelayId, false, true);
       fanAutoOn = false;
-      Serial.println("[SMOKE] Fan auto-OFF: cooldown complete.");
+      LOGLN("[SMOKE] Fan auto-OFF: cooldown complete.");
     }
-    fanManuallyDisabled = false;  // allow auto-on again for the next episode
+    fanManuallyDisabled = false;
 
     unsigned long nowMs = millis();
     broadcastSmokeEvent("smoke_cleared", nowMs, true);
     broadcastSmokeEvent("cigarette_episode_closed", nowMs, true);
-    Serial.println("[SMOKE] Safety hold complete. Relay 1 manual control restored.");
+    LOGLN("[SMOKE] Safety hold complete. Relay 1 manual control restored.");
     return;
   }
 
-  // Keep safety state deterministic while lock is active.
   applyRelay(RELAY_1_ID, false, false);
 }
 
 void updateSmokeDetection() {
   int sample = analogRead(MQ2_PIN);
-  if (!isSensorValueValid(sample)) {
-    return;
-  }
+  if (!isSensorValueValid(sample)) return;
 
   lastValidReadingMs = millis();
   mq2Raw             = sample;
@@ -497,7 +566,6 @@ void updateSmokeDetection() {
                   + ((float)mq2Raw * smokePolicy.smoothAlpha);
   }
 
-  // Baseline adapts only while not in smoke lock.
   if (!smokeLockActive) {
     mq2Baseline = mq2Baseline * (1.0f - smokePolicy.baselineAlpha)
                   + (mq2Smoothed * smokePolicy.baselineAlpha);
@@ -527,18 +595,16 @@ void updateSmokeDetection() {
                                     + "-" + String(smokeDetectedAt);
         smokeEpisodePeakIntensity = intensity;
 
-        // Safety: force relay 1 OFF during smoke hold.
         applyRelay(RELAY_1_ID, false, true);
         broadcastSmokeEvent("smoke_detected", smokeDetectedAt, false);
-        Serial.println("[SMOKE] Detected. Relay 1 forced OFF for safety hold.");
+        LOGLN("[SMOKE] Detected. Relay 1 forced OFF for safety hold.");
 
-        // FIX: Auto-turn fan (relay 2) ON, unless the user manually disabled it.
         if (!fanManuallyDisabled) {
           applyRelay(smokePolicy.fanRelayId, true, true);
           fanAutoOn = true;
-          Serial.println("[SMOKE] Fan auto-ON: smoke detected.");
+          LOGLN("[SMOKE] Fan auto-ON: smoke detected.");
         } else {
-          Serial.println("[SMOKE] Fan auto-ON skipped: user has manually disabled it.");
+          LOGLN("[SMOKE] Fan auto-ON skipped: user has manually disabled it.");
         }
       }
     } else {
@@ -561,17 +627,16 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     message += (char)payload[i];
   }
 
-  // MQTT kept for relay 1 compatibility.
   if (message == "1") {
     if (smokeLockActive) {
-      Serial.println("[MQTT] Relay 1 ON blocked by smoke safety hold.");
+      LOGLN("[MQTT] Relay 1 ON blocked by smoke safety hold.");
       return;
     }
     applyRelay(RELAY_1_ID, true, true);
-    Serial.println("[MQTT] Relay 1 ON");
+    LOGLN("[MQTT] Relay 1 ON");
   } else if (message == "0") {
     applyRelay(RELAY_1_ID, false, true);
-    Serial.println("[MQTT] Relay 1 OFF");
+    LOGLN("[MQTT] Relay 1 OFF");
   }
 }
 
@@ -589,17 +654,13 @@ bool mqttReconnect() {
 
   bool nowConnected = mqttClient.connected();
   if (nowConnected) {
-    if (!lastConnected) {
-      Serial.print("[MQTT] connected as ");
-      Serial.println(clientId);
-    }
+    if (!lastConnected) { LOG("[MQTT] connected as "); LOGLN(clientId); }
     lastConnected = true;
     return true;
   }
 
   if (lastConnected) {
-    Serial.print("[MQTT] disconnected, state=");
-    Serial.println(mqttClient.state());
+    LOG("[MQTT] disconnected, state="); LOGLN(mqttClient.state());
     lastConnected = false;
   }
 
@@ -607,17 +668,15 @@ bool mqttReconnect() {
   if (nowMs - lastMqttReconnectMs < MQTT_RETRY_MS) return false;
   lastMqttReconnectMs = nowMs;
 
-  Serial.print("[MQTT] reconnecting... ");
+  LOG("[MQTT] reconnecting... ");
   if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
     bool subscribed = mqttClient.subscribe(MQTT_TOPIC);
-    Serial.print("ok, subscribed=");
-    Serial.println(subscribed ? "yes" : "no");
+    LOG("ok, subscribed="); LOGLN(subscribed ? "yes" : "no");
     lastConnected = true;
     return true;
   }
 
-  Serial.print("failed rc=");
-  Serial.println(mqttClient.state());
+  LOG("failed rc="); LOGLN(mqttClient.state());
   lastConnected = false;
   return false;
 }
@@ -626,35 +685,9 @@ bool mqttReconnect() {
 // HTTP + WS handlers
 // ---------------------------
 void addCorsHeaders(AsyncWebServerResponse *response) {
-  response->addHeader("Access-Control-Allow-Origin",  CORS_ALLOWED_ORIGIN);
+  response->addHeader("Access-Control-Allow-Origin",  "*");
   response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  response->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-IOT-Token, X-IOT-MFA-Token");
-}
-
-bool isAuthorized(AsyncWebServerRequest *request) {
-  String token = "";
-
-  if (request->hasHeader("Authorization")) {
-    String auth = request->header("Authorization");
-    if (auth.startsWith("Bearer ")) {
-      token = auth.substring(7);
-      token.trim();
-    }
-  }
-
-  if (token.length() == 0 && request->hasHeader("X-IOT-Token")) {
-    token = request->header("X-IOT-Token");
-    token.trim();
-  }
-
-  if (token.length() == 0 || token != String(API_TOKEN)) {
-    AsyncWebServerResponse *response = request->beginResponse(401, "application/json", "{\"detail\":\"Unauthorized\"}");
-    addCorsHeaders(response);
-    request->send(response);
-    return false;
-  }
-
-  return true;
+  response->addHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
 void handleCors(AsyncWebServerRequest *request) {
@@ -671,18 +704,14 @@ void handleRelayStatus(AsyncWebServerRequest *request) {
     r["id"]   = i + 1;
     r["isOn"] = relayState[i];
   }
-
   String json;
   serializeJson(doc, json);
-
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeaders(response);
   request->send(response);
 }
 
 void handleRelayToggle(AsyncWebServerRequest *request) {
-  if (!isAuthorized(request)) return;
-
   if (!request->hasParam("id") || !request->hasParam("state")) {
     request->send(400, "text/plain", "Missing parameters");
     return;
@@ -701,25 +730,22 @@ void handleRelayToggle(AsyncWebServerRequest *request) {
     StaticJsonDocument<192> doc;
     doc["error"]        = "Relay 1 locked OFF due to smoke safety hold";
     doc["retryAfterMs"] = smokeLockUntil > millis() ? (smokeLockUntil - millis()) : 0;
-
     String json;
     serializeJson(doc, json);
-
     AsyncWebServerResponse *response = request->beginResponse(423, "application/json", json);
     addCorsHeaders(response);
     request->send(response);
     return;
   }
 
-  // FIX: Track manual fan override so auto-logic respects user intent.
   if (id == smokePolicy.fanRelayId) {
     if (!state) {
       fanManuallyDisabled = true;
-      fanAutoOn           = false;  // user took over; don't auto-OFF at cooldown end
-      Serial.println("[FAN] Manually disabled by user via HTTP.");
+      fanAutoOn           = false;
+      LOGLN("[FAN] Manually disabled by user via HTTP.");
     } else {
       fanManuallyDisabled = false;
-      Serial.println("[FAN] Manually enabled by user via HTTP.");
+      LOGLN("[FAN] Manually enabled by user via HTTP.");
     }
   }
 
@@ -728,10 +754,8 @@ void handleRelayToggle(AsyncWebServerRequest *request) {
   StaticJsonDocument<96> doc;
   doc["id"]   = id;
   doc["isOn"] = state;
-
   String json;
   serializeJson(doc, json);
-
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeaders(response);
   request->send(response);
@@ -742,9 +766,7 @@ void handleSmokeStatus(AsyncWebServerRequest *request) {
   float avg5m     = currentAq5mAverage();
   bool  avgReady  = isAq5mReady();
 
-  // FIX: bumped to 1024 to prevent silent truncation
   StaticJsonDocument<1024> doc;
-
   JsonObject telemetry = doc.createNestedObject("telemetry");
   telemetry["raw"]                      = mq2Raw;
   telemetry["smoothed"]                 = mq2Smoothed;
@@ -787,23 +809,14 @@ void handleSmokeStatus(AsyncWebServerRequest *request) {
 
   String json;
   serializeJson(doc, json);
-
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeaders(response);
   request->send(response);
 }
 
-// FIX: Body data handler for POST /smoke/policy.
-// ESPAsyncWebServer does NOT populate request->getParam("plain") for raw JSON bodies
-// (Content-Type: application/json). We must use the onBody callback (3-arg server.on).
-// The body is accumulated in a global buffer across chunks, then parsed when complete.
 void handleSmokePolicyBody(AsyncWebServerRequest *request,
                            uint8_t *data, size_t len,
                            size_t index, size_t total) {
-  if (index == 0 && !isAuthorized(request)) {
-    return;
-  }
-
   if (index == 0) {
     smokePolicyBodyBuffer = "";
     smokePolicyBodyBuffer.reserve(total);
@@ -813,7 +826,6 @@ void handleSmokePolicyBody(AsyncWebServerRequest *request,
     smokePolicyBodyBuffer += (char)data[i];
   }
 
-  // Wait until all chunks have arrived before parsing.
   if (index + len < total) return;
 
   StaticJsonDocument<384> doc;
@@ -825,8 +837,6 @@ void handleSmokePolicyBody(AsyncWebServerRequest *request,
     return;
   }
 
-  // FIX: Use !isNull() + .as<>() instead of .is<unsigned long>() which silently fails
-  // in ArduinoJson v6 (integers are stored internally as long long).
   if (!doc["mode"].isNull())
     smokePolicy.mode = parseFanMode(doc["mode"].as<String>());
   if (!doc["fanRelayId"].isNull())
@@ -837,11 +847,11 @@ void handleSmokePolicyBody(AsyncWebServerRequest *request,
     smokePolicy.smokeThresholdOn = doc["smokeThresholdOn"].as<int>();
   if (!doc["smokeThresholdOff"].isNull())
     smokePolicy.smokeThresholdOff = doc["smokeThresholdOff"].as<int>();
-  if (!doc["minSmokeDurationMs"].isNull())  // FIX: was is<unsigned long>() — never true in v6
+  if (!doc["minSmokeDurationMs"].isNull())
     smokePolicy.minSmokeDurationMs = doc["minSmokeDurationMs"].as<unsigned long>();
-  if (!doc["debounceMs"].isNull())          // FIX: same
+  if (!doc["debounceMs"].isNull())
     smokePolicy.debounceMs = doc["debounceMs"].as<unsigned long>();
-  if (!doc["postSmokeCooldownMs"].isNull()) // FIX: same
+  if (!doc["postSmokeCooldownMs"].isNull())
     smokePolicy.postSmokeCooldownMs = doc["postSmokeCooldownMs"].as<unsigned long>();
   if (!doc["timezoneOffsetMinutes"].isNull())
     smokePolicy.timezoneOffsetMinutes = doc["timezoneOffsetMinutes"].as<int>();
@@ -861,7 +871,6 @@ void handleSmokePolicyBody(AsyncWebServerRequest *request,
 
   String json;
   serializeJson(out, json);
-
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeaders(response);
   request->send(response);
@@ -869,17 +878,15 @@ void handleSmokePolicyBody(AsyncWebServerRequest *request,
 
 void handleHealth(AsyncWebServerRequest *request) {
   StaticJsonDocument<288> doc;
-  doc["status"]              = "OK";
-  doc["wifi"]                = WiFi.status() == WL_CONNECTED;
-  doc["mqtt"]                = mqttClient.connected();
-  doc["mqttState"]           = mqttClient.state();
-  doc["uptimeSec"]           = (millis() - bootMs) / 1000;
-  doc["phase"]               = phaseToString(runtimePhase);
+  doc["status"]               = "OK";
+  doc["wifi"]                 = WiFi.status() == WL_CONNECTED;
+  doc["mqtt"]                 = mqttClient.connected();
+  doc["mqttState"]            = mqttClient.state();
+  doc["uptimeSec"]            = (millis() - bootMs) / 1000;
+  doc["phase"]                = phaseToString(runtimePhase);
   doc["airQualityAvg5mReady"] = isAq5mReady();
-
   String json;
   serializeJson(doc, json);
-
   AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
   addCorsHeaders(response);
   request->send(response);
@@ -899,7 +906,6 @@ void onWsEvent(AsyncWebSocket *serverPtr, AsyncWebSocketClient *client, AwsEvent
       r["id"]   = i + 1;
       r["isOn"] = relayState[i];
     }
-
     String json;
     serializeJson(doc, json);
     client->text(json);
@@ -933,15 +939,14 @@ void onWsEvent(AsyncWebSocket *serverPtr, AsyncWebSocketClient *client, AwsEvent
     if (id < 1 || id > NUM_RELAYS) return;
     if (smokeLockActive && id == RELAY_1_ID && isOn) return;
 
-    // FIX: Track manual fan override from WebSocket as well.
     if (id == smokePolicy.fanRelayId) {
       if (!isOn) {
         fanManuallyDisabled = true;
         fanAutoOn           = false;
-        Serial.println("[FAN] Manually disabled by user via WS.");
+        LOGLN("[FAN] Manually disabled by user via WS.");
       } else {
         fanManuallyDisabled = false;
-        Serial.println("[FAN] Manually enabled by user via WS.");
+        LOGLN("[FAN] Manually enabled by user via WS.");
       }
     }
 
@@ -954,10 +959,7 @@ void onWsEvent(AsyncWebSocket *serverPtr, AsyncWebSocketClient *client, AwsEvent
 // ---------------------------
 void setup() {
   Serial.begin(115200);
-  bootMs = millis();
-
-  // FIX: Initialize lastValidReadingMs to now so sensorHealthy doesn't
-  // flicker false during the 2-minute boot calibration window.
+  bootMs             = millis();
   lastValidReadingMs = millis();
 
   for (int i = 0; i < NUM_RELAYS; i++) {
@@ -969,8 +971,9 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(MQ2_PIN, ADC_11db);
 
-  WiFi.begin(ssid, password);
+  // Serial-only during WiFi connect — WebSerial not registered yet
   Serial.print("[WiFi] Connecting");
+  WiFi.begin(ssid, password);
   unsigned long wifiStart = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 30000UL) {
     delay(500);
@@ -981,7 +984,6 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("[WiFi] Connected IP: ");
     Serial.println(WiFi.localIP());
-
     if (MDNS.begin(hostname)) {
       MDNS.addService("http", "tcp", 80);
       MDNS.addService("ws",   "tcp", 80);
@@ -993,9 +995,7 @@ void setup() {
     Serial.println("[WiFi] Not connected at boot. Will retry in loop.");
   }
 
-  runBootCalibrationAndLearning();
-  lastAvgPublishMs = millis();
-
+  // Register all routes and WebSerial BEFORE server.begin()
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
 
@@ -1003,26 +1003,34 @@ void setup() {
   server.on("/relays/toggle", HTTP_POST,    handleRelayToggle);
   server.on("/relays/toggle", HTTP_OPTIONS, handleCors);
   server.on("/smoke/status",  HTTP_GET,     handleSmokeStatus);
-
-  // FIX: Use the 5-arg overload so ESPAsyncWebServer delivers the raw JSON body
-  // via the body-data callback instead of the broken "plain" param approach.
-  server.on("/smoke/policy", HTTP_POST,
-    [](AsyncWebServerRequest *request) {},  // request handler (intentionally empty)
-    nullptr,                                 // file upload handler (unused)
-    handleSmokePolicyBody                    // body data handler
+  server.on("/smoke/policy",  HTTP_POST,
+    [](AsyncWebServerRequest *request) {},
+    nullptr,
+    handleSmokePolicyBody
   );
-  server.on("/smoke/policy", HTTP_OPTIONS, handleCors);
-
-  server.on("/health", HTTP_GET, handleHealth);
+  server.on("/smoke/policy",  HTTP_OPTIONS, handleCors);
+  server.on("/health",        HTTP_GET,     handleHealth);
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response =
-      request->beginResponse(200, "text/plain", "ESP32 relay controller online");
-    addCorsHeaders(response);
-    request->send(response);
+    String body = "ESP32 relay controller online\n";
+    body += "Terminal: http://";
+    body += WiFi.localIP().toString();
+    body += "/webserial\n";
+    AsyncWebServerResponse *r = request->beginResponse(200, "text/plain", body);
+    addCorsHeaders(r);
+    request->send(r);
   });
 
+  // WebSerial registers /webserial on the same server instance.
+  // No extra app needed — just open the URL in Chrome on any device on the same WiFi.
+  WebSerial.begin(&server);
+  WebSerial.onMessage(webSerialCallback);
   server.begin();
   Serial.println("[HTTP] Server started on port 80");
+
+  // From this point, LOG/LOGLN go to both USB serial AND the browser terminal.
+  LOG("[TERMINAL] http://");
+  LOG(WiFi.localIP().toString());
+  LOGLN("/webserial  <-- open this on your Android phone");
 
   mqttClient.setKeepAlive(60);
   mqttClient.setSocketTimeout(5);
@@ -1031,6 +1039,13 @@ void setup() {
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
   mqttReconnect();
+
+  // Boot calibration runs AFTER server is up so calibration progress
+  // is visible live in the browser terminal.
+  runBootCalibrationAndLearning();
+  lastAvgPublishMs = millis();
+
+  LOGLN("[BOOT] Normal operation. Type 'help' in /webserial for commands.");
 }
 
 void loop() {
@@ -1058,8 +1073,8 @@ void loop() {
   }
 
   if (nowMs - lastAvgPublishMs >= AVG_PUBLISH_INTERVAL_MS) {
-    lastAvgPublishMs    = nowMs;
-    aq5mLastPublished   = currentAq5mAverage();
+    lastAvgPublishMs  = nowMs;
+    aq5mLastPublished = currentAq5mAverage();
     broadcastAirQualityAverage(aq5mLastPublished, isAq5mReady());
   }
 

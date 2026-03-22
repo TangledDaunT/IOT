@@ -5,6 +5,28 @@ import { MOCK_MODE, SMOKE_DEFAULTS } from '../config'
 import { createApiClient, attachInterceptors } from './api'
 import { mockApi } from './mock'
 import { normalizeSmokeTelemetry } from './smokeTelemetry'
+import { getAuthHeaders, getMfaHeaders, resolveEdgeApiBaseUrl } from './securityService'
+
+const EDGE_TIMEOUT_MS = 8_000
+
+async function fetchJson(url, options, timeoutMs = EDGE_TIMEOUT_MS) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...options, signal: ctrl.signal })
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      throw new Error(detail || `HTTP ${res.status}`)
+    }
+    return res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function edgeConfigured() {
+  return Boolean(import.meta.env.VITE_EDGE_API_BASE_URL)
+}
 
 function normalizePolicy(data = {}) {
   return {
@@ -32,13 +54,24 @@ export async function getSmokeStatus() {
     }
   }
 
-  const client = attachInterceptors(createApiClient())
-  const res = await client.get('/smoke/status')
+  let data
+  if (edgeConfigured()) {
+    const base = resolveEdgeApiBaseUrl()
+    data = await fetchJson(`${base}/api/smoke/status`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    })
+  } else {
+    const client = attachInterceptors(createApiClient())
+    const res = await client.get('/smoke/status')
+    data = res.data
+  }
+
   return {
-    telemetry: normalizeSmokeTelemetry(res.data?.telemetry ?? res.data),
-    policy: normalizePolicy(res.data?.policy ?? {}),
-    cigarettesToday: Number(res.data?.cigarettesToday ?? 0),
-    syncStatus: res.data?.syncStatus ?? { synced: true, pending: 0, failed: 0 },
+    telemetry: normalizeSmokeTelemetry(data?.telemetry ?? data),
+    policy: normalizePolicy(data?.policy ?? {}),
+    cigarettesToday: Number(data?.cigarettesToday ?? 0),
+    syncStatus: data?.syncStatus ?? { synced: true, pending: 0, failed: 0 },
   }
 }
 
@@ -48,7 +81,17 @@ export async function updateSmokePolicy(partialPolicy) {
     return normalizePolicy(res.data)
   }
 
+  if (edgeConfigured()) {
+    const base = resolveEdgeApiBaseUrl()
+    const data = await fetchJson(`${base}/api/smoke/policy`, {
+      method: 'POST',
+      headers: getMfaHeaders(getAuthHeaders({ 'Content-Type': 'application/json' })),
+      body: JSON.stringify(partialPolicy),
+    })
+    return normalizePolicy(data)
+  }
+
   const client = attachInterceptors(createApiClient())
-  const res = await client.post('/smoke/policy', partialPolicy)
+  const res = await client.post('/smoke/policy', partialPolicy, { headers: getMfaHeaders() })
   return normalizePolicy(res.data)
 }

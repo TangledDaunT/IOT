@@ -16,6 +16,7 @@
  * log_event payload:       { level, source, message, meta }
  */
 import { MOCK_MODE, WS_PATH } from '../config'
+import { getApiToken } from './securityService'
 
 const MAX_BACKOFF_MS = 30_000
 const PING_INTERVAL  = 25_000
@@ -44,7 +45,11 @@ class WsService extends Emitter {
 
   /** Derive ws(s):// URL from an http(s) base URL */
   static toWsUrl(baseUrl, path) {
-    return baseUrl.replace(/^http/, 'ws') + path
+    const url = baseUrl.replace(/^http/, 'ws') + path
+    const token = getApiToken()
+    if (!token) return url
+    const sep = url.includes('?') ? '&' : '?'
+    return `${url}${sep}token=${encodeURIComponent(token)}`
   }
 
   connect(baseUrl) {

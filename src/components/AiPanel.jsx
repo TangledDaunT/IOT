@@ -9,17 +9,15 @@
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useRelayContext } from '../context/RelayContext'
+import { respondWithBackend } from '../services/voiceService'
 import { RELAY_CONFIG } from '../config'
-
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL = 'llama3-8b-8192'
 
 // Build system prompt with live relay context
 function buildSystemPrompt(relayState) {
   const relayLines = RELAY_CONFIG.map((r) => {
     const s = relayState?.relays?.[r.id]
     const onOff = s?.isOn ? 'ON' : 'OFF'
-    return `  • ${r.label} (ID ${r.id}): ${onOff}`
+    return `  • ${r.name} (ID ${r.id}): ${onOff}`
   }).join('\n')
 
   return `You are an intelligent IoT home control assistant. You help monitor and control smart relays in a home automation system. Be concise, helpful, and factual. Do not use markdown headers or bullet lists unless essential. Keep answers under 120 words.
@@ -30,38 +28,16 @@ ${relayLines}
 You can answer questions about the relay states above, suggest automation strategies, provide energy-saving tips, or explain what's happening. You cannot directly control relays from this chat — users must use voice commands or the dashboard for that.`
 }
 
-// Send a message to Groq (non-streaming)
-async function askGroq(messages, relayState) {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
-  if (!apiKey) throw new Error('GROQ API key not configured. Add VITE_GROQ_API_KEY to .env')
+// Send a message to edge assistant backend (non-streaming)
+async function askAssistant(userText, relayState) {
+  const relayStates = RELAY_CONFIG.map((r) => ({
+    id: r.id,
+    isOn: Boolean(relayState?.relays?.[r.id]?.isOn),
+  }))
 
-  const body = {
-    model: MODEL,
-    temperature: 0.5,
-    max_tokens: 200,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(relayState) },
-      ...messages,
-    ],
-  }
-
-  const resp = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(12000),
-  })
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '')
-    throw new Error(`Groq API error ${resp.status}: ${text.slice(0, 80)}`)
-  }
-
-  const data = await resp.json()
-  return data.choices?.[0]?.message?.content?.trim() ?? '(no response)'
+  const enrichedPrompt = `${userText}\n\n${buildSystemPrompt(relayState)}`
+  const reply = await respondWithBackend(enrichedPrompt, null, relayStates)
+  return reply || '(no response)'
 }
 
 // ── Message bubble ────────────────────────────────────────────────────────
@@ -174,17 +150,16 @@ export default function AiPanel({ open, onClose }) {
     setLoading(true)
 
     try {
-      const history = [...messages, userEntry].slice(-10) // last 10 messages for context
-      const reply = await askGroq(history, relayState)
+      const reply = await askAssistant(userMsg, relayState)
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }])
     } catch (err) {
-      const errMsg = err.message || 'Connection failed'
+      const errMsg = err.message || 'Assistant unavailable'
       setError(errMsg)
       setMessages((prev) => [...prev, { role: 'assistant', content: `⚠ ${errMsg}` }])
     } finally {
       setLoading(false)
     }
-  }, [messages, loading, relayState])
+  }, [loading, relayState])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -231,7 +206,7 @@ export default function AiPanel({ open, onClose }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
               width: '6px', height: '6px', borderRadius: '50%',
-              background: import.meta.env.VITE_GROQ_API_KEY ? '#4ade80' : '#ef4444',
+              background: '#4ade80',
             }} />
             <span style={{
               fontSize: '11px', fontFamily: 'monospace', fontWeight: 700,

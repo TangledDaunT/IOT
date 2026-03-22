@@ -13,6 +13,18 @@ npm run test:coverage # Coverage report → htmlcov/
 npm run preview       # Serve dist/ locally
 ```
 
+## Edge Assistant (Python) Commands
+```bash
+cd edge_assistant
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8088 --reload
+python run_workers.py
+```
+
+Run `uvicorn` and `run_workers.py` in separate terminals.
+
 ## Architecture
 
 **Stack**: React 18 + Vite 5, TailwindCSS 3, Axios, Context API + useReducer. No Redux/MUI.
@@ -56,6 +68,9 @@ Edit `DEVICE_CONFIG` in [src/config/index.js](../src/config/index.js) to map rel
 3. Hardcoded fallback: `http://192.168.1.7`
 
 **Never** rely on `localhost` — the device is always an ESP32. `.env` is gitignored; copy `.env.example`.
+
+### Edge assistant API base URL
+`VITE_EDGE_API_BASE_URL` is optional and defaults to `VITE_API_BASE_URL` when unset. Set it explicitly when the FastAPI edge assistant runs on a different host/port (for example `:8088`).
 
 ### Mock mode
 `VITE_MOCK_MODE=true` uses [mock.js](../src/services/mock.js) instead of real API. Toggle in `.env` or Settings page.
@@ -157,6 +172,7 @@ Reconnect is non-blocking via `millis()` gate. Credentials in `relay_controller.
 - `.env` is **gitignored** — never commit it. Use `.env.example` as template.
 - `VITE_*` vars are bundled into JS — treat as client-visible. Don't put server secrets here.
 - `VITE_APP_PASSWORD` is SHA-256 hashed client-side; change from default `changeme123` before deploying.
+- Keep backend-only secrets in `edge_assistant/.env` (for example `GROQ_API_KEY`), not in frontend `VITE_*` variables.
 
 ## Performance Requirements
 - No heavy animations on relay cards
