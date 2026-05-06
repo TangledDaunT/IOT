@@ -1,7 +1,16 @@
 # IoT Control Dashboard
-
+ 
 Production-ready local IoT dashboard for controlling ESP32 relays with a React frontend and an optional FastAPI edge assistant.
 Designed for Samsung Galaxy J6 class hardware (720x1480, 3 GB RAM), with lightweight UI and strict performance constraints.
+
+## What it does
+
+- Provides a mobile-first dashboard to control ESP32-connected relays (on/off, scene presets, timers).
+- Shows device telemetry and smoke/fire sensor status and lets you update smoke policies.
+- Offers two voice flows: an active mic command flow and an idle wake-word flow ("hey buddy") that use STT + LLM parsing.
+- Supports optimistic UI, real-time updates via WebSocket, and optional edge AI assistant (FastAPI) for advanced voice/AI features.
+- Runs in real hardware mode or mock mode (`VITE_MOCK_MODE=true`) for development and testing.
+
 
 ## Stack
 
